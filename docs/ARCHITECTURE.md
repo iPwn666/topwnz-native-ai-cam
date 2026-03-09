@@ -69,6 +69,21 @@ To umožňuje:
 - document outline a následnou perspektivní korekci
 - lokální klasifikaci scény/objektů
 
+### 4. Runtime Core ML model path
+
+Soubor:
+
+- [CoreMLModelInstaller.swift](/home/pwn/Dokumenty/ai-kamera-cz/native/AIKameraNative/Sources/Services/CoreMLModelInstaller.swift)
+
+Pro klasifikaci už appka nepoužívá jen systémový `VNClassifyImageRequest`. Nově umí:
+
+- stáhnout oficiální Apple `MobileNetV2FP16.mlmodel`
+- zkompilovat ho přímo na iPhonu přes `MLModel.compileModel(at:)`
+- načíst ho jako `VNCoreMLModel`
+- použít ho pro live i captured classification
+
+To je důležité proto, že build host je Linux a nechceme být závislí na macOS/Xcode asset compiler pipeline.
+
 ## UI vrstva
 
 Soubor:
@@ -167,7 +182,7 @@ Skripty:
 
 ## Next reasonable steps
 
-- hlubší `Core ML` s vlastním modelem
+- hlubší `Core ML` s vlastním bundlovaným nebo staženým modelem
 - live object detection místo čisté klasifikace
 - document export pipeline
 - lepší video overlay a profily

@@ -56,6 +56,9 @@ enum AppStrings {
     static var liveMLNoResult: String { isCzech ? "Zatím bez klasifikace." : "No classification yet." }
     static var capturedMLText: String { isCzech ? "Klasifikace snímku" : "Captured classification" }
     static var capturedMLHint: String { isCzech ? "Scéna byla klasifikována lokálně v zařízení." : "The scene was classified locally on-device." }
+    static var coreMLPreparing: String { isCzech ? "Připravuji Core ML model" : "Preparing Core ML model" }
+    static var coreMLReady: String { isCzech ? "Core ML model připraven" : "Core ML model ready" }
+    static var coreMLHint: String { isCzech ? "Stáhne se a zkompiluje oficiální Apple MobileNetV2 model." : "The official Apple MobileNetV2 model will be downloaded and compiled." }
     static var documentMode: String { isCzech ? "Dokument" : "Document" }
     static var documentReady: String { isCzech ? "Dokument připraven" : "Document ready" }
     static var documentHint: String { isCzech ? "Zarovnej dokument do obrysu a vyfoť ho." : "Align the document inside the frame and capture it." }

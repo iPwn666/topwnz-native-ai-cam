@@ -72,6 +72,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private var isDocumentModeEnabled = false
     private var isLiveMLEnabled = false
     private var isFocusExposureLocked = false
+    private var isPreparingMLModel = false
     private var recordingStartedAt: Date?
     private var recordingTimer: Timer?
     private var activeToolsSection: ToolsSection = .quick
@@ -671,7 +672,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         brandLinkButton.isHidden = !isAuthorized
         brandLinkButton.alpha = hasImage || hasVideo || hasScan ? 0.58 : 0.78
 
-        let canInteractWithCamera = isAuthorized && !isCapturing && !isAnalyzing && !isRecordingVideo
+        let canInteractWithCamera = isAuthorized && !isCapturing && !isAnalyzing && !isPreparingMLModel && !isRecordingVideo
         captureButton.isEnabled = canInteractWithCamera
         analyzeButton.isEnabled = (hasImage || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML) && !isAnalyzing
         analyzeButton.isHidden = !(hasImage || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
@@ -794,7 +795,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
         resultCard.isHidden = !(hasAnalysis || hasError || hasVideo || hasScan || hasImage || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
 
-        if isCapturing || isAnalyzing {
+        if isCapturing || isAnalyzing || isPreparingMLModel {
             activityIndicator.startAnimating()
         } else {
             activityIndicator.stopAnimating()
@@ -1051,6 +1052,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private func currentStatusText(hasImage: Bool, hasVideo: Bool, hasScan: Bool) -> String {
         if isRecordingVideo { return AppStrings.recording }
         if isAnalyzing { return AppStrings.analyzing }
+        if isPreparingMLModel { return AppStrings.coreMLPreparing }
         if isCapturing { return AppStrings.capturing }
         if let latestAnalysis {
             return latestAnalysis.title
@@ -1082,6 +1084,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private func secondaryStatusText(hasImage: Bool, hasVideo: Bool, hasScan: Bool, hasAnalysis: Bool) -> String {
         if !cameraService.authorizationStatus.isAuthorizedForCamera {
             return AppStrings.permissionBody
+        }
+        if isPreparingMLModel {
+            return AppStrings.coreMLHint
         }
         if isRecordingVideo {
             return "\(preferredFPS) \(AppStrings.fps) • \(String(format: "%.1fx", zoomFactor))"
@@ -1444,7 +1449,13 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         let requested = !isLiveMLEnabled
         Task { [weak self] in
             guard let self else { return }
+            if requested {
+                self.isPreparingMLModel = true
+                self.cameraService.lastError = nil
+                self.refreshUI()
+            }
             self.isLiveMLEnabled = await self.cameraService.setMLClassificationEnabled(requested)
+            self.isPreparingMLModel = false
             if self.isLiveMLEnabled {
                 self.isScannerEnabled = false
                 self.isLiveOCREnabled = false
@@ -1455,6 +1466,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 self.ocrOverlayView.update(blocks: [], selectedText: nil)
                 self.latestDocumentQuad = nil
                 self.documentOverlayView.update(quad: nil)
+                self.updateTuningHUD(text: AppStrings.coreMLReady, animated: true)
             } else {
                 self.liveClassification = nil
             }

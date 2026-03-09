@@ -23,6 +23,10 @@ Veřejné repo:
   - live rectangle detection
   - perspektivní korekce po vyfocení
 - on-device live ML klasifikace scény/objektů
+- runtime `Core ML` model flow:
+  - appka si stáhne oficiální Apple `MobileNetV2`
+  - model se zkompiluje přímo na iPhonu
+  - pak se používá pro live i captured klasifikaci
 - AI analýza přes OpenAI `Responses API`
 - české UI a TTS výstup pro AI/OCR výsledky
 
@@ -97,6 +101,15 @@ Použité oficiální zdroje:
 
 - `https://api.openai.com/v1/responses`
 - `https://developers.openai.com/api/docs/guides/structured-outputs/`
+
+## Vision / Core ML
+
+Lokální ML teď používá dva režimy:
+
+- systémový `Vision` pro OCR, document detection a další live requesty
+- vlastní runtime `Core ML` asset path pro klasifikaci přes Apple `MobileNetV2`
+
+Model se nestaví při build time na hostu. Appka si ho připraví až na zařízení, takže i Linux/TrollStore workflow zůstává jednoduchý.
 
 ## Poznámky
 

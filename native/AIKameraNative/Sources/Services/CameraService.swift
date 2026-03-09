@@ -1,5 +1,8 @@
 #if canImport(AVFoundation) && canImport(UIKit)
 @preconcurrency import AVFoundation
+#if canImport(CoreML)
+import CoreML
+#endif
 import Foundation
 import ImageIO
 import Vision
@@ -531,6 +534,9 @@ final class CameraService: NSObject, @unchecked Sendable {
     private let metadataOutput = AVCaptureMetadataOutput()
     private let videoDataOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "AIKameraNative.CameraSession")
+#if canImport(CoreML)
+    private let coreMLInstaller = CoreMLModelInstaller()
+#endif
 
     private var videoInput: AVCaptureDeviceInput?
     private var isConfigured = false
@@ -554,6 +560,9 @@ final class CameraService: NSObject, @unchecked Sendable {
     private var isProcessingTextRecognition = false
     private var isProcessingDocumentDetection = false
     private var isProcessingMLClassification = false
+#if canImport(CoreML)
+    private var downloadedCoreMLVisionModel: VNCoreMLModel?
+#endif
     private var scannerRectOfInterest = CGRect(x: 0, y: 0, width: 1, height: 1)
     private var lastScannedCode: String?
     private var lastScannedAt = Date.distantPast
@@ -1255,7 +1264,18 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     func setMLClassificationEnabled(_ enabled: Bool) async -> Bool {
-        await withCheckedContinuation { continuation in
+        if enabled {
+#if canImport(CoreML)
+            do {
+                try await prepareDownloadedMLClassifierIfNeeded()
+            } catch {
+                lastError = error.localizedDescription
+                return false
+            }
+#endif
+        }
+
+        return await withCheckedContinuation { continuation in
             sessionQueue.async {
                 self.mlClassificationEnabled = enabled
                 self.isProcessingMLClassification = false
@@ -1326,22 +1346,13 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     func classifyImage(in imageData: Data) async -> ImageClassificationSample? {
-        guard #available(iOS 15.0, *) else { return nil }
-
         return await withCheckedContinuation { continuation in
             sessionQueue.async {
-                let request = VNClassifyImageRequest { request, _ in
-                    let observations = (request.results as? [VNClassificationObservation]) ?? []
-                    let labels = observations
-                        .filter { $0.confidence >= 0.12 }
-                        .prefix(4)
-                        .map {
-                            ImageClassificationLabel(
-                                title: Self.humanizedClassificationTitle($0.identifier),
-                                confidence: $0.confidence
-                            )
-                        }
-                    continuation.resume(returning: labels.isEmpty ? nil : ImageClassificationSample(labels: Array(labels)))
+                guard let request = self.makeClassificationRequest(resultHandler: { observations in
+                    continuation.resume(returning: Self.classificationSample(from: observations))
+                }) else {
+                    continuation.resume(returning: nil)
+                    return
                 }
 
                 do {
@@ -1353,6 +1364,31 @@ final class CameraService: NSObject, @unchecked Sendable {
             }
         }
     }
+
+#if canImport(CoreML)
+    private func prepareDownloadedMLClassifierIfNeeded() async throws {
+        if downloadedCoreMLVisionModel != nil {
+            return
+        }
+
+        let compiledModelURL = try await coreMLInstaller.prepareClassifierModel()
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    let configuration = MLModelConfiguration()
+                    configuration.computeUnits = .all
+                    let mlModel = try MLModel(contentsOf: compiledModelURL, configuration: configuration)
+                    self.downloadedCoreMLVisionModel = try VNCoreMLModel(for: mlModel)
+                    self.lastError = nil
+                    continuation.resume()
+                } catch {
+                    self.lastError = error.localizedDescription
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+#endif
 
     func setTorchEnabled(_ enabled: Bool) async -> Bool {
         await withCheckedContinuation { continuation in
@@ -1831,8 +1867,7 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func maybeDeliverImageClassification(from sampleBuffer: CMSampleBuffer) {
-        guard #available(iOS 15.0, *),
-              mlClassificationEnabled,
+        guard mlClassificationEnabled,
               onImageClassification != nil,
               !isProcessingMLClassification else { return }
 
@@ -1841,25 +1876,18 @@ final class CameraService: NSObject, @unchecked Sendable {
         lastMLClassificationUptime = uptime
         isProcessingMLClassification = true
 
-        let request = VNClassifyImageRequest { [weak self] request, _ in
+        guard let request = makeClassificationRequest(resultHandler: { [weak self] observations in
             guard let self else { return }
-            let observations = (request.results as? [VNClassificationObservation]) ?? []
-            let labels = observations
-                .filter { $0.confidence >= 0.12 }
-                .prefix(4)
-                .map {
-                    ImageClassificationLabel(
-                        title: Self.humanizedClassificationTitle($0.identifier),
-                        confidence: $0.confidence
-                    )
-                }
-            let sample = labels.isEmpty ? nil : ImageClassificationSample(labels: Array(labels))
+            let sample = Self.classificationSample(from: observations)
             DispatchQueue.main.async { [weak self] in
                 self?.onImageClassification?(sample)
             }
             self.sessionQueue.async {
                 self.isProcessingMLClassification = false
             }
+        }) else {
+            isProcessingMLClassification = false
+            return
         }
 
         do {
@@ -1872,6 +1900,36 @@ final class CameraService: NSObject, @unchecked Sendable {
         } catch {
             isProcessingMLClassification = false
         }
+    }
+
+    private func makeClassificationRequest(resultHandler: @escaping ([VNClassificationObservation]) -> Void) -> VNRequest? {
+#if canImport(CoreML)
+        if let downloadedCoreMLVisionModel {
+            return VNCoreMLRequest(model: downloadedCoreMLVisionModel) { request, _ in
+                let observations = (request.results as? [VNClassificationObservation]) ?? []
+                resultHandler(observations)
+            }
+        }
+#endif
+
+        guard #available(iOS 15.0, *) else { return nil }
+        return VNClassifyImageRequest { request, _ in
+            let observations = (request.results as? [VNClassificationObservation]) ?? []
+            resultHandler(observations)
+        }
+    }
+
+    private static func classificationSample(from observations: [VNClassificationObservation]) -> ImageClassificationSample? {
+        let labels = observations
+            .filter { $0.confidence >= 0.12 }
+            .prefix(4)
+            .map {
+                ImageClassificationLabel(
+                    title: humanizedClassificationTitle($0.identifier),
+                    confidence: $0.confidence
+                )
+            }
+        return labels.isEmpty ? nil : ImageClassificationSample(labels: Array(labels))
     }
 
     private func visionImageOrientation() -> CGImagePropertyOrientation {
