@@ -27,6 +27,9 @@ Veřejné repo:
   - appka si stáhne oficiální Apple `MobileNetV2`
   - model se zkompiluje přímo na iPhonu
   - pak se používá pro live i captured klasifikaci
+- on-device objektová detekce přes `YOLOv3TinyFP16`
+  - live overlay boxy s labely
+  - detekce i nad pořízeným snímkem
 - AI analýza přes OpenAI `Responses API`
 - české UI a TTS výstup pro AI/OCR výsledky
 
@@ -108,6 +111,7 @@ Lokální ML teď používá dva režimy:
 
 - systémový `Vision` pro OCR, document detection a další live requesty
 - vlastní runtime `Core ML` asset path pro klasifikaci přes Apple `MobileNetV2`
+- vlastní runtime `Core ML` asset path pro objektovou detekci přes Apple `YOLOv3TinyFP16`
 
 Model se nestaví při build time na hostu. Appka si ho připraví až na zařízení, takže i Linux/TrollStore workflow zůstává jednoduchý.
 

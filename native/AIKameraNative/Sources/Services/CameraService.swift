@@ -510,6 +510,30 @@ struct ImageClassificationSample: Equatable, Sendable {
     }
 }
 
+struct DetectedObject: Equatable, Sendable {
+    let label: String
+    let confidence: Float
+    let boundingBox: CGRect
+}
+
+struct ObjectDetectionSample: Equatable, Sendable {
+    let objects: [DetectedObject]
+
+    var combinedText: String {
+        objects
+            .prefix(5)
+            .map { "\($0.label) (\(Int(($0.confidence * 100).rounded()))%)" }
+            .joined(separator: "\n")
+    }
+
+    var compactSummary: String {
+        objects
+            .prefix(4)
+            .map { "\($0.label) \(Int(($0.confidence * 100).rounded()))%" }
+            .joined(separator: " • ")
+    }
+}
+
 final class CameraService: NSObject, @unchecked Sendable {
     private(set) var authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
     private(set) var currentPosition: AVCaptureDevice.Position = .back
@@ -557,11 +581,14 @@ final class CameraService: NSObject, @unchecked Sendable {
     private var textRecognitionEnabled = false
     private var documentDetectionEnabled = false
     private var mlClassificationEnabled = false
+    private var objectDetectionEnabled = false
     private var isProcessingTextRecognition = false
     private var isProcessingDocumentDetection = false
     private var isProcessingMLClassification = false
+    private var isProcessingObjectDetection = false
 #if canImport(CoreML)
     private var downloadedCoreMLVisionModel: VNCoreMLModel?
+    private var downloadedObjectDetectorVisionModel: VNCoreMLModel?
 #endif
     private var scannerRectOfInterest = CGRect(x: 0, y: 0, width: 1, height: 1)
     private var lastScannedCode: String?
@@ -570,12 +597,14 @@ final class CameraService: NSObject, @unchecked Sendable {
     private var lastTextRecognitionUptime: TimeInterval = 0
     private var lastDocumentDetectionUptime: TimeInterval = 0
     private var lastMLClassificationUptime: TimeInterval = 0
+    private var lastObjectDetectionUptime: TimeInterval = 0
 
     var onCodeScanned: ((ScannedCode) -> Void)?
     var onMonitoringSample: ((FrameMonitoringSample) -> Void)?
     var onRecognizedText: ((TextRecognitionSample) -> Void)?
     var onDetectedDocument: ((DetectedDocumentQuad?) -> Void)?
     var onImageClassification: ((ImageClassificationSample?) -> Void)?
+    var onDetectedObjects: ((ObjectDetectionSample?) -> Void)?
 
     var currentFPS: Int { preferredFPS }
     var isLowLightBoostEnabled: Bool { lowLightBoostEnabled }
@@ -595,6 +624,7 @@ final class CameraService: NSObject, @unchecked Sendable {
     var isTextRecognitionEnabled: Bool { textRecognitionEnabled }
     var isDocumentDetectionEnabled: Bool { documentDetectionEnabled }
     var isMLClassificationEnabled: Bool { mlClassificationEnabled }
+    var isObjectDetectionEnabled: Bool { objectDetectionEnabled }
     private func supportedFrameRates(for device: AVCaptureDevice?) -> [Int] {
         guard let device else { return [30] }
         let rates = device.formats.flatMap { format in
@@ -1197,10 +1227,12 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.textRecognitionEnabled = false
                     self.documentDetectionEnabled = false
                     self.mlClassificationEnabled = false
+                    self.objectDetectionEnabled = false
                     DispatchQueue.main.async { [weak self] in
                         self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
                         self?.onDetectedDocument?(nil)
                         self?.onImageClassification?(nil)
+                        self?.onDetectedObjects?(nil)
                     }
                 }
                 self.configureMetadataTypes()
@@ -1220,10 +1252,12 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.scannerEnabled = false
                     self.documentDetectionEnabled = false
                     self.mlClassificationEnabled = false
+                    self.objectDetectionEnabled = false
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
                         self?.onDetectedDocument?(nil)
                         self?.onImageClassification?(nil)
+                        self?.onDetectedObjects?(nil)
                     }
                 } else {
                     DispatchQueue.main.async { [weak self] in
@@ -1246,10 +1280,12 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.scannerEnabled = false
                     self.textRecognitionEnabled = false
                     self.mlClassificationEnabled = false
+                    self.objectDetectionEnabled = false
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
                         self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
                         self?.onImageClassification?(nil)
+                        self?.onDetectedObjects?(nil)
                     }
                 }
                 if !enabled {
@@ -1284,10 +1320,12 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.scannerEnabled = false
                     self.textRecognitionEnabled = false
                     self.documentDetectionEnabled = false
+                    self.objectDetectionEnabled = false
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
                         self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
                         self?.onDetectedDocument?(nil)
+                        self?.onDetectedObjects?(nil)
                     }
                 } else {
                     DispatchQueue.main.async { [weak self] in
@@ -1296,6 +1334,45 @@ final class CameraService: NSObject, @unchecked Sendable {
                 }
                 self.lastError = nil
                 continuation.resume(returning: self.mlClassificationEnabled)
+            }
+        }
+    }
+
+    func setObjectDetectionEnabled(_ enabled: Bool) async -> Bool {
+        if enabled {
+#if canImport(CoreML)
+            do {
+                try await prepareDownloadedObjectDetectorIfNeeded()
+            } catch {
+                lastError = error.localizedDescription
+                return false
+            }
+#endif
+        }
+
+        return await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                self.objectDetectionEnabled = enabled
+                self.isProcessingObjectDetection = false
+                self.lastObjectDetectionUptime = 0
+                if enabled {
+                    self.scannerEnabled = false
+                    self.textRecognitionEnabled = false
+                    self.documentDetectionEnabled = false
+                    self.mlClassificationEnabled = false
+                    self.configureMetadataTypes()
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
+                        self?.onDetectedDocument?(nil)
+                        self?.onImageClassification?(nil)
+                    }
+                } else {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onDetectedObjects?(nil)
+                    }
+                }
+                self.lastError = nil
+                continuation.resume(returning: self.objectDetectionEnabled)
             }
         }
     }
@@ -1365,6 +1442,26 @@ final class CameraService: NSObject, @unchecked Sendable {
         }
     }
 
+    func detectObjects(in imageData: Data) async -> ObjectDetectionSample? {
+        return await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                guard let request = self.makeObjectDetectionRequest(resultHandler: { observations in
+                    continuation.resume(returning: Self.objectDetectionSample(from: observations))
+                }) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                do {
+                    let handler = VNImageRequestHandler(data: imageData, options: [:])
+                    try handler.perform([request])
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
 #if canImport(CoreML)
     private func prepareDownloadedMLClassifierIfNeeded() async throws {
         if downloadedCoreMLVisionModel != nil {
@@ -1379,6 +1476,29 @@ final class CameraService: NSObject, @unchecked Sendable {
                     configuration.computeUnits = .all
                     let mlModel = try MLModel(contentsOf: compiledModelURL, configuration: configuration)
                     self.downloadedCoreMLVisionModel = try VNCoreMLModel(for: mlModel)
+                    self.lastError = nil
+                    continuation.resume()
+                } catch {
+                    self.lastError = error.localizedDescription
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func prepareDownloadedObjectDetectorIfNeeded() async throws {
+        if downloadedObjectDetectorVisionModel != nil {
+            return
+        }
+
+        let compiledModelURL = try await coreMLInstaller.prepareObjectDetectorModel()
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    let configuration = MLModelConfiguration()
+                    configuration.computeUnits = .all
+                    let mlModel = try MLModel(contentsOf: compiledModelURL, configuration: configuration)
+                    self.downloadedObjectDetectorVisionModel = try VNCoreMLModel(for: mlModel)
                     self.lastError = nil
                     continuation.resume()
                 } catch {
@@ -1902,6 +2022,42 @@ final class CameraService: NSObject, @unchecked Sendable {
         }
     }
 
+    private func maybeDeliverDetectedObjects(from sampleBuffer: CMSampleBuffer) {
+        guard objectDetectionEnabled,
+              onDetectedObjects != nil,
+              !isProcessingObjectDetection else { return }
+
+        let uptime = ProcessInfo.processInfo.systemUptime
+        guard uptime - lastObjectDetectionUptime >= 0.55 else { return }
+        lastObjectDetectionUptime = uptime
+        isProcessingObjectDetection = true
+
+        guard let request = makeObjectDetectionRequest(resultHandler: { [weak self] observations in
+            guard let self else { return }
+            let sample = Self.objectDetectionSample(from: observations)
+            DispatchQueue.main.async { [weak self] in
+                self?.onDetectedObjects?(sample)
+            }
+            self.sessionQueue.async {
+                self.isProcessingObjectDetection = false
+            }
+        }) else {
+            isProcessingObjectDetection = false
+            return
+        }
+
+        do {
+            let handler = VNImageRequestHandler(
+                cmSampleBuffer: sampleBuffer,
+                orientation: visionImageOrientation(),
+                options: [:]
+            )
+            try handler.perform([request])
+        } catch {
+            isProcessingObjectDetection = false
+        }
+    }
+
     private func makeClassificationRequest(resultHandler: @escaping ([VNClassificationObservation]) -> Void) -> VNRequest? {
 #if canImport(CoreML)
         if let downloadedCoreMLVisionModel {
@@ -1930,6 +2086,40 @@ final class CameraService: NSObject, @unchecked Sendable {
                 )
             }
         return labels.isEmpty ? nil : ImageClassificationSample(labels: Array(labels))
+    }
+
+    private func makeObjectDetectionRequest(resultHandler: @escaping ([VNRecognizedObjectObservation]) -> Void) -> VNRequest? {
+#if canImport(CoreML)
+        guard let downloadedObjectDetectorVisionModel else { return nil }
+        let request = VNCoreMLRequest(model: downloadedObjectDetectorVisionModel) { request, _ in
+            let observations = (request.results as? [VNRecognizedObjectObservation]) ?? []
+            resultHandler(observations)
+        }
+        request.imageCropAndScaleOption = .scaleFill
+        return request
+#else
+        return nil
+#endif
+    }
+
+    private static func objectDetectionSample(from observations: [VNRecognizedObjectObservation]) -> ObjectDetectionSample? {
+        let objects = observations
+            .prefix(6)
+            .compactMap { observation -> DetectedObject? in
+                guard let label = observation.labels.first else { return nil }
+                let rect = CGRect(
+                    x: observation.boundingBox.minX,
+                    y: 1 - observation.boundingBox.maxY,
+                    width: observation.boundingBox.width,
+                    height: observation.boundingBox.height
+                )
+                return DetectedObject(
+                    label: humanizedClassificationTitle(label.identifier),
+                    confidence: label.confidence,
+                    boundingBox: rect
+                )
+            }
+        return objects.isEmpty ? nil : ObjectDetectionSample(objects: Array(objects))
     }
 
     private func visionImageOrientation() -> CGImagePropertyOrientation {
@@ -2024,6 +2214,7 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
         maybeDeliverRecognizedText(from: sampleBuffer)
         maybeDeliverDetectedDocument(from: sampleBuffer)
         maybeDeliverImageClassification(from: sampleBuffer)
+        maybeDeliverDetectedObjects(from: sampleBuffer)
     }
 }
 #endif

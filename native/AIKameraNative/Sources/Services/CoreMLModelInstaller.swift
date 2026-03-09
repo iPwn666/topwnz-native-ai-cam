@@ -17,9 +17,37 @@ enum CoreMLModelInstallerError: LocalizedError {
 }
 
 struct CoreMLModelInstaller {
-    private static let modelFileName = "MobileNetV2FP16.mlmodel"
-    private static let compiledFolderName = "MobileNetV2FP16.mlmodelc"
-    private static let remoteModelURLString = "https://ml-assets.apple.com/coreml/models/Image/ImageClassification/MobileNetV2/MobileNetV2FP16.mlmodel"
+    enum ModelKind {
+        case classifier
+        case detector
+
+        var fileName: String {
+            switch self {
+            case .classifier:
+                return "MobileNetV2FP16.mlmodel"
+            case .detector:
+                return "YOLOv3TinyFP16.mlmodel"
+            }
+        }
+
+        var compiledFolderName: String {
+            switch self {
+            case .classifier:
+                return "MobileNetV2FP16.mlmodelc"
+            case .detector:
+                return "YOLOv3TinyFP16.mlmodelc"
+            }
+        }
+
+        var remoteModelURLString: String {
+            switch self {
+            case .classifier:
+                return "https://ml-assets.apple.com/coreml/models/Image/ImageClassification/MobileNetV2/MobileNetV2FP16.mlmodel"
+            case .detector:
+                return "https://ml-assets.apple.com/coreml/models/ObjectDetection/YOLOv3Tiny/YOLOv3TinyFP16.mlmodel"
+            }
+        }
+    }
 
     private let fileManager = FileManager.default
 
@@ -34,34 +62,40 @@ struct CoreMLModelInstaller {
         }
     }
 
-    private var rawModelURL: URL {
-        get throws { try baseDirectory.appendingPathComponent(Self.modelFileName) }
+    private func rawModelURL(for kind: ModelKind) throws -> URL {
+        try baseDirectory.appendingPathComponent(kind.fileName)
     }
 
-    private var compiledModelURL: URL {
-        get throws { try baseDirectory.appendingPathComponent(Self.compiledFolderName, isDirectory: true) }
+    private func compiledModelURL(for kind: ModelKind) throws -> URL {
+        try baseDirectory.appendingPathComponent(kind.compiledFolderName, isDirectory: true)
     }
 
-    private var remoteModelURL: URL {
-        get throws {
-            guard let url = URL(string: Self.remoteModelURLString) else {
-                throw CoreMLModelInstallerError.invalidURL
-            }
-            return url
+    private func remoteModelURL(for kind: ModelKind) throws -> URL {
+        guard let url = URL(string: kind.remoteModelURLString) else {
+            throw CoreMLModelInstallerError.invalidURL
         }
+        return url
     }
 
     func prepareClassifierModel() async throws -> URL {
+        try await prepareModel(.classifier)
+    }
+
+    func prepareObjectDetectorModel() async throws -> URL {
+        try await prepareModel(.detector)
+    }
+
+    private func prepareModel(_ kind: ModelKind) async throws -> URL {
         try ensureDirectory()
 
-        let compiledURL = try compiledModelURL
+        let compiledURL = try compiledModelURL(for: kind)
         if fileManager.fileExists(atPath: compiledURL.path) {
             return compiledURL
         }
 
-        let rawURL = try rawModelURL
+        let rawURL = try rawModelURL(for: kind)
         if !fileManager.fileExists(atPath: rawURL.path) {
-            try await downloadModel(to: rawURL)
+            try await downloadModel(kind, to: rawURL)
         }
 
         let temporaryCompiledURL = try await MLModel.compileModel(at: rawURL)
@@ -76,8 +110,8 @@ struct CoreMLModelInstaller {
         try fileManager.createDirectory(at: try baseDirectory, withIntermediateDirectories: true)
     }
 
-    private func downloadModel(to destinationURL: URL) async throws {
-        let (temporaryURL, _) = try await URLSession.shared.download(from: try remoteModelURL)
+    private func downloadModel(_ kind: ModelKind, to destinationURL: URL) async throws {
+        let (temporaryURL, _) = try await URLSession.shared.download(from: try remoteModelURL(for: kind))
         if fileManager.fileExists(atPath: destinationURL.path) {
             try? fileManager.removeItem(at: destinationURL)
         }

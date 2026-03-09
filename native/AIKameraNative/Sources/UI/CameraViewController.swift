@@ -71,6 +71,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private var isLiveOCREnabled = false
     private var isDocumentModeEnabled = false
     private var isLiveMLEnabled = false
+    private var isObjectDetectionEnabled = false
     private var isFocusExposureLocked = false
     private var isPreparingMLModel = false
     private var recordingStartedAt: Date?
@@ -88,6 +89,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let zebraOverlayView = ZebraOverlayView()
     private let ocrOverlayView = OCRTextOverlayView()
     private let documentOverlayView = DocumentQuadOverlayView()
+    private let objectOverlayView = ObjectDetectionOverlayView()
 
     private let statusCard = CameraGlassCard()
     private let statusLabel = UILabel()
@@ -134,6 +136,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let ocrButton = UIButton(type: .system)
     private let documentButton = UIButton(type: .system)
     private let mlButton = UIButton(type: .system)
+    private let objectButton = UIButton(type: .system)
     private let brandLinkButton = UIButton(type: .system)
     private let askAIButton = UIButton(type: .system)
     private let speakButton = UIButton(type: .system)
@@ -168,6 +171,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private var latestDocumentQuad: DetectedDocumentQuad?
     private var liveClassification: ImageClassificationSample?
     private var capturedClassification: ImageClassificationSample?
+    private var liveObjectDetection: ObjectDetectionSample?
+    private var capturedObjectDetection: ObjectDetectionSample?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -190,6 +195,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         }
         cameraService.onImageClassification = { [weak self] sample in
             self?.handleImageClassificationSample(sample)
+        }
+        cameraService.onDetectedObjects = { [weak self] sample in
+            self?.handleObjectDetectionSample(sample)
         }
 
         configureViews()
@@ -255,6 +263,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         ocrOverlayView.isHidden = true
         documentOverlayView.translatesAutoresizingMaskIntoConstraints = false
         documentOverlayView.isHidden = true
+        objectOverlayView.translatesAutoresizingMaskIntoConstraints = false
+        objectOverlayView.isHidden = true
 
         tuningHUDCard.alpha = 0
         tuningHUDCard.isHidden = true
@@ -347,6 +357,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         configureTuningButton(ocrButton, title: "OCR", action: #selector(ocrTapped))
         configureTuningButton(documentButton, title: "DOC", action: #selector(documentTapped))
         configureTuningButton(mlButton, title: "ML", action: #selector(mlTapped))
+        configureTuningButton(objectButton, title: "OBJ", action: #selector(objectTapped))
         configureBrandLinkButton()
 
         captureButton.translatesAutoresizingMaskIntoConstraints = false
@@ -436,7 +447,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func layoutUI() {
-        [previewView, imageView, zebraOverlayView, ocrOverlayView, documentOverlayView, gridOverlayView, topFadeView, bottomFadeView, statusCard, modeCard, toolsPanelCard, toolsToggleButton, resultCard, analyzeButton, shareButton, captureButton, permissionCard, activityIndicator, focusIndicatorView, scannerFrameView, tuningHUDCard, recordingHUDCard, histogramCard, levelView, brandLinkButton].forEach {
+        [previewView, imageView, zebraOverlayView, ocrOverlayView, documentOverlayView, objectOverlayView, gridOverlayView, topFadeView, bottomFadeView, statusCard, modeCard, toolsPanelCard, toolsToggleButton, resultCard, analyzeButton, shareButton, captureButton, permissionCard, activityIndicator, focusIndicatorView, scannerFrameView, tuningHUDCard, recordingHUDCard, histogramCard, levelView, brandLinkButton].forEach {
             view.addSubview($0)
         }
 
@@ -520,6 +531,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             documentOverlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             documentOverlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             documentOverlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            objectOverlayView.topAnchor.constraint(equalTo: view.topAnchor),
+            objectOverlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            objectOverlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            objectOverlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             gridOverlayView.topAnchor.constraint(equalTo: view.topAnchor),
             gridOverlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -645,6 +661,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         let hasOCR = currentLiveOCRText() != nil
         let hasLiveML = !(liveClassification?.combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         let hasCapturedML = !(capturedClassification?.combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasLiveObjects = !(liveObjectDetection?.combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasCapturedObjects = !(capturedObjectDetection?.combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         let hasAnalysis = latestAnalysis != nil
         let hasError = !(cameraService.lastError ?? "").isEmpty
         let showScannerOverlay = isAuthorized && isScannerEnabled && !hasImage && !hasVideo
@@ -657,6 +675,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         zebraOverlayView.isHidden = !(showLiveAssists && isZebraVisible)
         ocrOverlayView.isHidden = !(showLiveAssists && isLiveOCREnabled)
         documentOverlayView.isHidden = !(showLiveAssists && isDocumentModeEnabled)
+        objectOverlayView.isHidden = !(showLiveAssists && isObjectDetectionEnabled)
         gridOverlayView.isHidden = !(showLiveAssists && isGridVisible)
         levelView.isHidden = !(showLiveAssists && isLevelVisible)
         histogramCard.isHidden = !(showLiveAssists && isHistogramVisible)
@@ -674,15 +693,15 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
         let canInteractWithCamera = isAuthorized && !isCapturing && !isAnalyzing && !isPreparingMLModel && !isRecordingVideo
         captureButton.isEnabled = canInteractWithCamera
-        analyzeButton.isEnabled = (hasImage || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML) && !isAnalyzing
-        analyzeButton.isHidden = !(hasImage || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
-        shareButton.isEnabled = hasAnalysis || hasVideo || hasScan || hasImage || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML
-        shareButton.isHidden = !(hasAnalysis || hasVideo || hasScan || hasImage || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
-        copyButton.isHidden = !(hasAnalysis || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
-        askAIButton.isHidden = !(hasImage || hasScan || hasAnalysis || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
-        askAIButton.isEnabled = !isAnalyzing && (hasImage || hasScan || hasAnalysis || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
-        speakButton.isHidden = !(hasAnalysis || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
-        speakButton.isEnabled = hasAnalysis || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML
+        analyzeButton.isEnabled = (hasImage || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects) && !isAnalyzing
+        analyzeButton.isHidden = !(hasImage || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects)
+        shareButton.isEnabled = hasAnalysis || hasVideo || hasScan || hasImage || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects
+        shareButton.isHidden = !(hasAnalysis || hasVideo || hasScan || hasImage || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects)
+        copyButton.isHidden = !(hasAnalysis || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects)
+        askAIButton.isHidden = !(hasImage || hasScan || hasAnalysis || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects)
+        askAIButton.isEnabled = !isAnalyzing && (hasImage || hasScan || hasAnalysis || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects)
+        speakButton.isHidden = !(hasAnalysis || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects)
+        speakButton.isEnabled = hasAnalysis || hasScan || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects
         openButton.isHidden = !hasPrimaryScanAction
         flipButton.isEnabled = canInteractWithCamera
         flipButton.alpha = (hasImage || hasVideo) ? 0.45 : 1.0
@@ -715,6 +734,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         documentButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
         mlButton.isEnabled = canInteractWithCamera
         mlButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
+        objectButton.isEnabled = canInteractWithCamera
+        objectButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
         vaultButton.isEnabled = !vaultEntries.isEmpty
         vaultButton.alpha = vaultEntries.isEmpty ? 0.45 : 1.0
         shutterTuneButton.isEnabled = canInteractWithCamera
@@ -737,6 +758,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         updateOCRButton()
         updateDocumentButton()
         updateMLButton()
+        updateObjectButton()
         updateVaultButton()
         updatePrimaryActionButton()
         updateAnalyzeButton()
@@ -755,12 +777,16 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
         if hasAnalysis {
             resultTitleLabel.text = AppStrings.resultTitle
+        } else if hasImage, hasCapturedObjects {
+            resultTitleLabel.text = AppStrings.capturedObjectText
         } else if hasImage, hasCapturedML {
             resultTitleLabel.text = AppStrings.capturedMLText
         } else if hasImage {
             resultTitleLabel.text = hasCapturedOCR ? AppStrings.capturedOCRText : AppStrings.latestShot
         } else if hasScan {
             resultTitleLabel.text = AppStrings.scannedCode
+        } else if hasLiveObjects {
+            resultTitleLabel.text = AppStrings.objectDetectText
         } else if hasLiveML {
             resultTitleLabel.text = AppStrings.liveMLText
         } else if hasOCR {
@@ -773,12 +799,16 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
         if let analysis = latestAnalysis {
             resultLabel.text = formatted(analysis: analysis)
+        } else if hasImage, let capturedObjectDetection {
+            resultLabel.text = capturedObjectDetection.combinedText
         } else if hasImage, let capturedClassification {
             resultLabel.text = capturedClassification.combinedText
         } else if hasImage, let capturedRecognizedText, !capturedRecognizedText.isEmpty {
             resultLabel.text = capturedRecognizedText
         } else if hasImage {
             resultLabel.text = AppStrings.askAIMessage
+        } else if hasLiveObjects {
+            resultLabel.text = liveObjectDetection?.combinedText ?? AppStrings.objectDetectNoResult
         } else if hasLiveML {
             resultLabel.text = liveClassification?.combinedText ?? AppStrings.liveMLNoResult
         } else if hasOCR {
@@ -793,7 +823,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             resultLabel.text = nil
         }
 
-        resultCard.isHidden = !(hasAnalysis || hasError || hasVideo || hasScan || hasImage || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML)
+        resultCard.isHidden = !(hasAnalysis || hasError || hasVideo || hasScan || hasImage || hasOCR || hasCapturedOCR || hasLiveML || hasCapturedML || hasLiveObjects || hasCapturedObjects)
 
         if isCapturing || isAnalyzing || isPreparingMLModel {
             activityIndicator.startAnimating()
@@ -896,6 +926,12 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         mlButton.accessibilityLabel = AppStrings.tuningLabel(AppStrings.liveML, active: isLiveMLEnabled)
     }
 
+    private func updateObjectButton() {
+        objectButton.backgroundColor = isObjectDetectionEnabled ? UIColor.systemIndigo.withAlphaComponent(0.88) : UIColor.black.withAlphaComponent(0.28)
+        objectButton.tintColor = .white
+        objectButton.accessibilityLabel = AppStrings.tuningLabel(AppStrings.objectDetect, active: isObjectDetectionEnabled)
+    }
+
     private func updateVaultButton() {
         vaultButton.configuration?.subtitle = vaultEntries.isEmpty ? nil : "\(vaultEntries.count)"
         vaultButton.tintColor = vaultEntries.isEmpty ? .white : UIColor.systemOrange
@@ -993,7 +1029,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         case .quick:
             return [flipButton, flashButton, zoomBadgeButton, fpsButton, nightButton, vaultButton, settingsButton]
         case .detect:
-            return [scannerButton, ocrButton, documentButton, mlButton]
+            return [scannerButton, ocrButton, documentButton, mlButton, objectButton]
         case .pro:
             return [whiteBalanceButton, autofocusButton, lockButton, exposureTuneButton, shutterTuneButton, isoTuneButton, focusTuneButton, gridButton, levelButton, histogramButton, zebraButton]
         }
@@ -1069,6 +1105,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         if isDocumentModeEnabled, latestDocumentQuad != nil {
             return AppStrings.documentReady
         }
+        if isObjectDetectionEnabled {
+            return AppStrings.objectDetectReady
+        }
         if isLiveMLEnabled {
             return AppStrings.liveMLReady
         }
@@ -1104,6 +1143,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             return "\(latestScannedCode.type) • \(latestScannedCode.payload.prefix(40))"
         }
         if hasImage {
+            if let capturedObjectDetection, !capturedObjectDetection.combinedText.isEmpty {
+                return "\(AppStrings.capturedObjectHint) • \(capturedObjectDetection.compactSummary)"
+            }
             if let capturedClassification, !capturedClassification.combinedText.isEmpty {
                 return "\(AppStrings.capturedMLHint) • \(capturedClassification.compactSummary)"
             }
@@ -1114,6 +1156,10 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         }
         if isDocumentModeEnabled {
             return "\(AppStrings.documentHint) • \(preferredFPS) \(AppStrings.fps)"
+        }
+        if isObjectDetectionEnabled {
+            let summary = liveObjectDetection?.compactSummary ?? AppStrings.objectDetectHint
+            return "\(summary) • \(preferredFPS) \(AppStrings.fps)"
         }
         if isLiveMLEnabled {
             let summary = liveClassification?.compactSummary ?? AppStrings.liveMLHint
@@ -1189,6 +1235,17 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         return ScannedCode(payload: text, type: "live-ml")
     }
 
+    private func currentLiveObjectText() -> String? {
+        let text = liveObjectDetection?.combinedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    private func currentLiveObjectScannedCode() -> ScannedCode? {
+        guard let text = currentLiveObjectText() else { return nil }
+        return ScannedCode(payload: text, type: "live-objects")
+    }
+
     private func nearestShutterPresetIndex(for value: Double) -> Int {
         AppSettings.shutterPresets.enumerated().min(by: { abs($0.element - value) < abs($1.element - value) })?.offset ?? 0
     }
@@ -1232,6 +1289,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         isLiveOCREnabled = cameraService.isTextRecognitionEnabled
         isDocumentModeEnabled = cameraService.isDocumentDetectionEnabled
         isLiveMLEnabled = cameraService.isMLClassificationEnabled
+        isObjectDetectionEnabled = cameraService.isObjectDetectionEnabled
         isTorchEnabled = cameraService.isTorchEnabled
         isFocusExposureLocked = cameraService.isFocusExposureLocked
         settings.exposureBias = Double(cameraService.currentExposureBias)
@@ -1405,9 +1463,12 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 self.isScannerEnabled = false
                 self.isDocumentModeEnabled = false
                 self.isLiveMLEnabled = false
+                self.isObjectDetectionEnabled = false
                 self.latestDocumentQuad = nil
                 self.documentOverlayView.update(quad: nil)
                 self.liveClassification = nil
+                self.liveObjectDetection = nil
+                self.objectOverlayView.update(objects: [])
             } else {
                 self.liveOCRBlocks.removeAll()
                 self.liveOCRDisplayBlocks.removeAll()
@@ -1429,11 +1490,14 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 self.isScannerEnabled = false
                 self.isLiveOCREnabled = false
                 self.isLiveMLEnabled = false
+                self.isObjectDetectionEnabled = false
                 self.liveOCRBlocks.removeAll()
                 self.liveOCRDisplayBlocks.removeAll()
                 self.selectedOCRText = nil
                 self.ocrOverlayView.update(blocks: [], selectedText: nil)
                 self.liveClassification = nil
+                self.liveObjectDetection = nil
+                self.objectOverlayView.update(objects: [])
             }
             if !self.isDocumentModeEnabled {
                 self.latestDocumentQuad = nil
@@ -1460,15 +1524,52 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 self.isScannerEnabled = false
                 self.isLiveOCREnabled = false
                 self.isDocumentModeEnabled = false
+                self.isObjectDetectionEnabled = false
                 self.liveOCRBlocks.removeAll()
                 self.liveOCRDisplayBlocks.removeAll()
                 self.selectedOCRText = nil
                 self.ocrOverlayView.update(blocks: [], selectedText: nil)
                 self.latestDocumentQuad = nil
                 self.documentOverlayView.update(quad: nil)
+                self.liveObjectDetection = nil
+                self.objectOverlayView.update(objects: [])
                 self.updateTuningHUD(text: AppStrings.coreMLReady, animated: true)
             } else {
                 self.liveClassification = nil
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            self.refreshUI()
+        }
+    }
+
+    @objc
+    private func objectTapped() {
+        let requested = !isObjectDetectionEnabled
+        Task { [weak self] in
+            guard let self else { return }
+            if requested {
+                self.isPreparingMLModel = true
+                self.cameraService.lastError = nil
+                self.refreshUI()
+            }
+            self.isObjectDetectionEnabled = await self.cameraService.setObjectDetectionEnabled(requested)
+            self.isPreparingMLModel = false
+            if self.isObjectDetectionEnabled {
+                self.isScannerEnabled = false
+                self.isLiveOCREnabled = false
+                self.isDocumentModeEnabled = false
+                self.isLiveMLEnabled = false
+                self.liveOCRBlocks.removeAll()
+                self.liveOCRDisplayBlocks.removeAll()
+                self.selectedOCRText = nil
+                self.ocrOverlayView.update(blocks: [], selectedText: nil)
+                self.latestDocumentQuad = nil
+                self.documentOverlayView.update(quad: nil)
+                self.liveClassification = nil
+                self.updateTuningHUD(text: AppStrings.coreMLReady, animated: true)
+            } else {
+                self.liveObjectDetection = nil
+                self.objectOverlayView.update(objects: [])
             }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             self.refreshUI()
@@ -1535,6 +1636,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 isLiveOCREnabled = false
                 isDocumentModeEnabled = false
                 isLiveMLEnabled = false
+                isObjectDetectionEnabled = false
                 liveOCRBlocks.removeAll()
                 liveOCRDisplayBlocks.removeAll()
                 selectedOCRText = nil
@@ -1542,6 +1644,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 latestDocumentQuad = nil
                 documentOverlayView.update(quad: nil)
                 liveClassification = nil
+                liveObjectDetection = nil
+                objectOverlayView.update(objects: [])
             }
             if !requested, isTorchEnabled {
                 isTorchEnabled = await cameraService.setTorchEnabled(false)
@@ -1708,6 +1812,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 await analyzeImage()
             } else if latestScannedCode != nil {
                 await analyzeScannedCode()
+            } else if currentLiveObjectText() != nil {
+                await analyzeLiveObjectText()
             } else if currentLiveOCRText() != nil {
                 await analyzeLiveOCRText()
             } else if currentLiveMLText() != nil {
@@ -1749,10 +1855,14 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             text = formatted(analysis: latestAnalysis)
         } else if let latestScannedCode {
             text = formatted(scannedCode: latestScannedCode)
+        } else if let capturedObjectDetection, !capturedObjectDetection.combinedText.isEmpty {
+            text = capturedObjectDetection.combinedText
         } else if let capturedClassification, !capturedClassification.combinedText.isEmpty {
             text = capturedClassification.combinedText
         } else if let capturedRecognizedText, !capturedRecognizedText.isEmpty {
             text = capturedRecognizedText
+        } else if let liveObjectText = currentLiveObjectText() {
+            text = liveObjectText
         } else if let liveMLText = currentLiveMLText() {
             text = liveMLText
         } else if let liveOCRText = currentLiveOCRText() {
@@ -1781,10 +1891,14 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             value = formatted(analysis: latestAnalysis)
         } else if let latestScannedCode {
             value = latestScannedCode.payload
+        } else if let capturedObjectDetection, !capturedObjectDetection.combinedText.isEmpty {
+            value = capturedObjectDetection.combinedText
         } else if let capturedClassification, !capturedClassification.combinedText.isEmpty {
             value = capturedClassification.combinedText
         } else if let capturedRecognizedText, !capturedRecognizedText.isEmpty {
             value = capturedRecognizedText
+        } else if let liveObjectText = currentLiveObjectText() {
+            value = liveObjectText
         } else if let liveMLText = currentLiveMLText() {
             value = liveMLText
         } else if let liveOCRText = currentLiveOCRText() {
@@ -1824,6 +1938,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             items = [latestVideoURL]
         } else if let latestAnalysis {
             items = [formatted(analysis: latestAnalysis)]
+        } else if let capturedObjectDetection, !capturedObjectDetection.combinedText.isEmpty {
+            items = [capturedObjectDetection.combinedText]
         } else if let capturedClassification, !capturedClassification.combinedText.isEmpty {
             items = [capturedClassification.combinedText]
         } else if let capturedRecognizedText, !capturedRecognizedText.isEmpty {
@@ -1832,6 +1948,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             items = [latestRenderedImage]
         } else if let latestScannedCode {
             items = [latestScannedCode.payload]
+        } else if let liveObjectText = currentLiveObjectText() {
+            items = [liveObjectText]
         } else if let liveMLText = currentLiveMLText() {
             items = [liveMLText]
         } else if let liveOCRText = currentLiveOCRText() {
@@ -1876,12 +1994,17 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         latestScannedCode = nil
         capturedRecognizedText = nil
         capturedClassification = nil
+        capturedObjectDetection = nil
         latestAnalysis = nil
         isSpeakingResult = false
         speechSynthesizer.stopSpeaking(at: .immediate)
         selectedOCRText = nil
         if !isLiveMLEnabled {
             liveClassification = nil
+        }
+        if !isObjectDetectionEnabled {
+            liveObjectDetection = nil
+            objectOverlayView.update(objects: [])
         }
         recordingStartedAt = nil
         stopRecordingTimer()
@@ -1906,6 +2029,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         latestScannedCode = nil
         capturedRecognizedText = nil
         capturedClassification = nil
+        capturedObjectDetection = nil
         latestRenderedImage = nil
         refreshUI()
 
@@ -1925,6 +2049,12 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                let classification = await cameraService.classifyImage(in: latestImageData),
                !classification.combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 capturedClassification = classification
+            }
+            if (settings.analysisMode == .shopping || isObjectDetectionEnabled),
+               let latestImageData,
+               let objectSample = await cameraService.detectObjects(in: latestImageData),
+               !objectSample.combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                capturedObjectDetection = objectSample
             }
             imageView.isHidden = false
             previewView.isHidden = true
@@ -1953,6 +2083,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         latestScannedCode = nil
         capturedRecognizedText = nil
         capturedClassification = nil
+        capturedObjectDetection = nil
         latestAnalysis = nil
         imageView.image = nil
         cameraService.lastError = nil
@@ -2114,6 +2245,30 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         refreshUI()
     }
 
+    private func analyzeLiveObjectText() async {
+        guard !isAnalyzing else { return }
+        guard let liveObjectCode = currentLiveObjectScannedCode() else { return }
+        guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            cameraService.lastError = AppStrings.missingAPIKey
+            refreshUI()
+            presentSettings()
+            return
+        }
+
+        isAnalyzing = true
+        cameraService.lastError = nil
+        refreshUI()
+
+        do {
+            latestAnalysis = try await aiService.analyze(scannedCode: liveObjectCode, settings: settings)
+        } catch {
+            cameraService.lastError = error.localizedDescription
+        }
+
+        isAnalyzing = false
+        refreshUI()
+    }
+
     private func askAI(question: String) async {
         guard !isAnalyzing else { return }
         guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -2133,6 +2288,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             } else if let latestScannedCode {
                 latestAnalysis = try await aiService.analyze(scannedCode: latestScannedCode, settings: settings, question: question)
                 persistVault(scannedCode: latestScannedCode, analysis: latestAnalysis)
+            } else if let liveObjectCode = currentLiveObjectScannedCode() {
+                latestAnalysis = try await aiService.analyze(scannedCode: liveObjectCode, settings: settings, question: question)
             } else if let liveMLCode = currentLiveMLScannedCode() {
                 latestAnalysis = try await aiService.analyze(scannedCode: liveMLCode, settings: settings, question: question)
             } else if let liveOCRCode = currentLiveOCRScannedCode() {
@@ -2151,6 +2308,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         latestScannedCode = scannedCode
         capturedRecognizedText = nil
         capturedClassification = nil
+        capturedObjectDetection = nil
         scanHistory.removeAll { $0.payload == scannedCode.payload }
         scanHistory.insert(scannedCode, at: 0)
         scanHistory = Array(scanHistory.prefix(4))
@@ -2218,6 +2376,24 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         }
     }
 
+    private func handleObjectDetectionSample(_ sample: ObjectDetectionSample?) {
+        guard latestImageData == nil, latestVideoURL == nil else { return }
+        liveObjectDetection = sample
+
+        let displayObjects = sample?.objects.map { object in
+            ObjectDetectionOverlayView.DisplayObject(
+                label: object.label,
+                confidence: object.confidence,
+                rect: previewView.previewLayer.layerRectConverted(fromMetadataOutputRect: object.boundingBox)
+            )
+        } ?? []
+        objectOverlayView.update(objects: displayObjects)
+
+        if isObjectDetectionEnabled {
+            refreshUI()
+        }
+    }
+
     private func persistVault(scannedCode: ScannedCode, analysis: CameraAnalysis?) {
         do {
             vaultEntries = try vaultStore.upsert(scannedCode: scannedCode, analysis: analysis)
@@ -2233,6 +2409,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         latestScannedCode = entry.scannedCode
         capturedRecognizedText = nil
         capturedClassification = nil
+        capturedObjectDetection = nil
         latestAnalysis = entry.analysis?.analysis
         cameraService.lastError = nil
         refreshUI()
@@ -3330,6 +3507,83 @@ private final class DocumentQuadOverlayView: UIView {
         path.close()
         quadLayer.path = path.cgPath
         fillLayer.path = path.cgPath
+    }
+}
+
+private final class ObjectDetectionOverlayView: UIView {
+    struct DisplayObject {
+        let label: String
+        let confidence: Float
+        let rect: CGRect
+    }
+
+    private let boxesLayer = CAShapeLayer()
+    private var labelViews: [UILabel] = []
+    private var objects: [DisplayObject] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        boxesLayer.strokeColor = UIColor.systemIndigo.withAlphaComponent(0.96).cgColor
+        boxesLayer.fillColor = UIColor.systemIndigo.withAlphaComponent(0.08).cgColor
+        boxesLayer.lineWidth = 2
+        layer.addSublayer(boxesLayer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        boxesLayer.frame = bounds
+        redraw()
+    }
+
+    func update(objects: [DisplayObject]) {
+        self.objects = objects
+        redraw()
+    }
+
+    private func redraw() {
+        labelViews.forEach { $0.removeFromSuperview() }
+        labelViews.removeAll()
+
+        let path = UIBezierPath()
+        for object in objects {
+            let rect = object.rect.intersection(bounds).insetBy(dx: -1, dy: -1)
+            guard !rect.isNull, !rect.isEmpty else { continue }
+
+            path.append(UIBezierPath(roundedRect: rect, cornerRadius: 10))
+
+            let label = UILabel()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.font = .systemFont(ofSize: 10, weight: .bold)
+            label.textColor = .white
+            label.textAlignment = .center
+            label.backgroundColor = UIColor.systemIndigo.withAlphaComponent(0.92)
+            label.layer.cornerRadius = 7
+            label.layer.cornerCurve = .continuous
+            label.clipsToBounds = true
+            label.text = "\(object.label) \(Int((object.confidence * 100).rounded()))%"
+            addSubview(label)
+            labelViews.append(label)
+
+            let width = min(max(label.intrinsicContentSize.width + 12, 70), max(70, rect.width))
+            let height: CGFloat = 20
+            let x = max(bounds.minX + 4, min(rect.minX, bounds.maxX - width - 4))
+            let y = max(bounds.minY + 4, rect.minY - height - 4)
+
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: x),
+                label.topAnchor.constraint(equalTo: topAnchor, constant: y),
+                label.widthAnchor.constraint(equalToConstant: width),
+                label.heightAnchor.constraint(equalToConstant: height),
+            ])
+        }
+        boxesLayer.path = path.cgPath
     }
 }
 

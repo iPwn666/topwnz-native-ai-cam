@@ -56,6 +56,13 @@ enum AppStrings {
     static var liveMLNoResult: String { isCzech ? "Zatím bez klasifikace." : "No classification yet." }
     static var capturedMLText: String { isCzech ? "Klasifikace snímku" : "Captured classification" }
     static var capturedMLHint: String { isCzech ? "Scéna byla klasifikována lokálně v zařízení." : "The scene was classified locally on-device." }
+    static var objectDetect: String { isCzech ? "Objekty" : "Objects" }
+    static var objectDetectReady: String { isCzech ? "Detekce objektů aktivní" : "Object detection ready" }
+    static var objectDetectHint: String { isCzech ? "Lokální detekce objektů běží přímo v zařízení." : "On-device object detection is running locally." }
+    static var objectDetectText: String { isCzech ? "Detekované objekty" : "Detected objects" }
+    static var objectDetectNoResult: String { isCzech ? "Zatím bez objektů." : "No objects yet." }
+    static var capturedObjectText: String { isCzech ? "Objekty ze snímku" : "Captured objects" }
+    static var capturedObjectHint: String { isCzech ? "Objekty byly detekované lokálně v zařízení." : "Objects were detected locally on-device." }
     static var coreMLPreparing: String { isCzech ? "Připravuji Core ML model" : "Preparing Core ML model" }
     static var coreMLReady: String { isCzech ? "Core ML model připraven" : "Core ML model ready" }
     static var coreMLHint: String { isCzech ? "Stáhne se a zkompiluje oficiální Apple MobileNetV2 model." : "The official Apple MobileNetV2 model will be downloaded and compiled." }
