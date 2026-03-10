@@ -155,6 +155,15 @@ enum AppStrings {
     static var swipeTuningHint: String {
         isCzech ? "Tahem vlevo a vpravo upravíš aktivní parametr." : "Swipe left and right to adjust the active parameter."
     }
+    static var swipeTuningCompactHint: String {
+        isCzech ? "↕ přepnutí • ↔ ladění" : "↕ switch • ↔ tune"
+    }
+    static var tuningResetHint: String {
+        isCzech ? "Pro nastavení resetováno na Auto." : "Pro settings reset to Auto."
+    }
+    static var activeTuningPrefix: String {
+        isCzech ? "Aktivní" : "Active"
+    }
     static var error: String { isCzech ? "Chyba" : "Error" }
     static var cameraUnavailable: String {
         isCzech

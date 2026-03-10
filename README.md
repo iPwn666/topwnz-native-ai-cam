@@ -12,6 +12,8 @@ Veřejné repo:
 - foto a long-press video
 - pinch-to-zoom, tap-to-focus, manual focus, AE/AF lock
 - ruční `EXP / SHR / ISO / FOC`
+- gesture tuning: `↕` přepínání aktivního parametru + `↔` jemné ladění
+- rychlý reset Pro nastavení přes `2-finger double tap` (návrat na Auto)
 - white balance preset, night boost, `30/60 FPS`
 - grid, level, histogram, zebry, luma monitoring
 - QR/barcode scanner s chytrými akcemi
@@ -74,6 +76,8 @@ Instalace do telefonu přes TrollStore:
 ```bash
 npm run native:install
 ```
+
+`native:install` teď preferuje USB (`127.0.0.1:2222`) a až pak zkouší Tailscale fallback.
 
 Hlavní skripty:
 

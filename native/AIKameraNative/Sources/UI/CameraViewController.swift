@@ -434,6 +434,15 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         view.addGestureRecognizer(doubleTapRecognizer)
         tapRecognizer.require(toFail: doubleTapRecognizer)
 
+        let twoFingerDoubleTapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerDoubleTapReset(_:)))
+        twoFingerDoubleTapRecognizer.numberOfTapsRequired = 2
+        twoFingerDoubleTapRecognizer.numberOfTouchesRequired = 2
+        twoFingerDoubleTapRecognizer.delegate = self
+        twoFingerDoubleTapRecognizer.cancelsTouchesInView = false
+        view.addGestureRecognizer(twoFingerDoubleTapRecognizer)
+        tapRecognizer.require(toFail: twoFingerDoubleTapRecognizer)
+        doubleTapRecognizer.require(toFail: twoFingerDoubleTapRecognizer)
+
         let longPressRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleCaptureLongPress(_:)))
         longPressRecognizer.minimumPressDuration = 0.22
         longPressRecognizer.allowableMovement = 40
@@ -444,6 +453,18 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         panRecognizer.delegate = self
         panRecognizer.cancelsTouchesInView = false
         view.addGestureRecognizer(panRecognizer)
+
+        let swipeUpRecognizer = UISwipeGestureRecognizer(target: self, action: #selector(handlePreviewVerticalSwipe(_:)))
+        swipeUpRecognizer.direction = .up
+        swipeUpRecognizer.delegate = self
+        swipeUpRecognizer.cancelsTouchesInView = false
+        view.addGestureRecognizer(swipeUpRecognizer)
+
+        let swipeDownRecognizer = UISwipeGestureRecognizer(target: self, action: #selector(handlePreviewVerticalSwipe(_:)))
+        swipeDownRecognizer.direction = .down
+        swipeDownRecognizer.delegate = self
+        swipeDownRecognizer.cancelsTouchesInView = false
+        view.addGestureRecognizer(swipeDownRecognizer)
     }
 
     private func layoutUI() {
@@ -1171,7 +1192,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         if isScannerEnabled {
             return "\(AppStrings.scannerAimHint) • \(preferredFPS) \(AppStrings.fps)"
         }
-        let swipeHint = isToolsPanelExpanded ? " • swipe" : ""
+        let swipeHint = isToolsPanelExpanded ? " • \(AppStrings.swipeTuningCompactHint)" : ""
         return "\(compactPreviewSummary())\(swipeHint)"
     }
 
@@ -1366,30 +1387,22 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
     @objc
     private func exposureTuneTapped() {
-        activeTuningControl = .exposure
-        updateTuningButtons()
-        refreshUI()
+        selectActiveTuningControl(.exposure, showHUD: true)
     }
 
     @objc
     private func shutterTuneTapped() {
-        activeTuningControl = .shutter
-        updateTuningButtons()
-        refreshUI()
+        selectActiveTuningControl(.shutter, showHUD: true)
     }
 
     @objc
     private func isoTuneTapped() {
-        activeTuningControl = .iso
-        updateTuningButtons()
-        refreshUI()
+        selectActiveTuningControl(.iso, showHUD: true)
     }
 
     @objc
     private func focusTuneTapped() {
-        activeTuningControl = .focus
-        updateTuningButtons()
-        refreshUI()
+        selectActiveTuningControl(.focus, showHUD: true)
     }
 
     @objc
@@ -1730,6 +1743,30 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private func handlePreviewDoubleTap(_ recognizer: UITapGestureRecognizer) {
         guard latestImageData == nil, latestVideoURL == nil else { return }
         flipTapped()
+    }
+
+    @objc
+    private func handleTwoFingerDoubleTapReset(_ recognizer: UITapGestureRecognizer) {
+        guard latestImageData == nil,
+              latestVideoURL == nil,
+              cameraService.authorizationStatus.isAuthorizedForCamera else { return }
+        resetProTuningToAuto()
+    }
+
+    @objc
+    private func handlePreviewVerticalSwipe(_ recognizer: UISwipeGestureRecognizer) {
+        guard latestImageData == nil,
+              latestVideoURL == nil,
+              cameraService.authorizationStatus.isAuthorizedForCamera else { return }
+
+        switch recognizer.direction {
+        case .up:
+            cycleActiveTuningControl(by: 1)
+        case .down:
+            cycleActiveTuningControl(by: -1)
+        default:
+            break
+        }
     }
 
     @objc
@@ -2571,6 +2608,65 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             cameraService.lastError = error.localizedDescription
             refreshUI()
             return nil
+        }
+    }
+
+    private func tuningControlLabel(_ control: TuningControl) -> String {
+        switch control {
+        case .exposure:
+            return AppStrings.exposure
+        case .shutter:
+            return AppStrings.shutter
+        case .iso:
+            return AppStrings.iso
+        case .focus:
+            return AppStrings.focus
+        }
+    }
+
+    private func selectActiveTuningControl(_ control: TuningControl, showHUD: Bool) {
+        activeTuningControl = control
+        updateTuningButtons()
+        if showHUD {
+            updateTuningHUD(text: "\(AppStrings.activeTuningPrefix): \(tuningControlLabel(control))", animated: true)
+        }
+        refreshUI()
+    }
+
+    private func cycleActiveTuningControl(by step: Int) {
+        let all: [TuningControl] = [.exposure, .shutter, .iso, .focus]
+        guard let currentIndex = all.firstIndex(of: activeTuningControl) else { return }
+        let count = all.count
+        let nextIndex = (currentIndex + step + count) % count
+        let nextControl = all[nextIndex]
+        guard nextControl != activeTuningControl else { return }
+        selectActiveTuningControl(nextControl, showHUD: true)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func resetProTuningToAuto() {
+        settings.exposureBias = AppSettings.default.exposureBias
+        settings.shutterDurationSeconds = AppSettings.default.shutterDurationSeconds
+        settings.isoValue = AppSettings.default.isoValue
+        settings.whiteBalancePreset = .auto
+        settings.focusMode = .auto
+        settings.manualFocusPosition = AppSettings.default.manualFocusPosition
+        try? settingsStore.save(settings)
+        selectActiveTuningControl(.exposure, showHUD: false)
+        updateTuningHUD(text: AppStrings.tuningResetHint, animated: true)
+
+        Task { [weak self] in
+            guard let self else { return }
+            self.settings.exposureBias = Double(await self.cameraService.setExposureBias(Float(AppSettings.default.exposureBias)))
+            self.settings.shutterDurationSeconds = await self.cameraService.setManualShutterDuration(AppSettings.default.shutterDurationSeconds)
+            self.settings.isoValue = Double(await self.cameraService.setManualISO(Float(AppSettings.default.isoValue)))
+            self.settings.whiteBalancePreset = await self.cameraService.setWhiteBalancePreset(.auto)
+            self.settings.focusMode = await self.cameraService.setFocusModePreset(.auto)
+            self.settings.manualFocusPosition = Double(self.cameraService.currentManualFocusPosition)
+            self.isNightBoostEnabled = self.cameraService.isLowLightBoostEnabled
+            try? self.settingsStore.save(self.settings)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            self.refreshUI()
         }
     }
 
