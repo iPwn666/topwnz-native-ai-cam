@@ -31,7 +31,10 @@ ssh_base=(
   -o IdentityAgent=none
   -o PreferredAuthentications=publickey
   -o PasswordAuthentication=no
-  -o StrictHostKeyChecking=accept-new
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  -o LogLevel=ERROR
+  -o ConnectTimeout=8
 )
 
 scp_base=(
@@ -44,7 +47,10 @@ scp_base=(
   -o IdentityAgent=none
   -o PreferredAuthentications=publickey
   -o PasswordAuthentication=no
-  -o StrictHostKeyChecking=accept-new
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  -o LogLevel=ERROR
+  -o ConnectTimeout=8
 )
 
 timeout "$SSH_TIMEOUT" "${ssh_base[@]}" "$USER_NAME@$HOST" "mkdir -p '$REMOTE_DIR' && chown mobile:mobile '$REMOTE_DIR' 2>/dev/null || true"
