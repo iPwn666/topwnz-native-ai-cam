@@ -5,6 +5,8 @@ import Foundation
 enum CoreMLModelInstallerError: LocalizedError {
     case invalidURL
     case applicationSupportUnavailable
+    case badHTTPStatus(Int)
+    case invalidDownloadedPayload
 
     var errorDescription: String? {
         switch self {
@@ -12,6 +14,14 @@ enum CoreMLModelInstallerError: LocalizedError {
             return AppStrings.isCzech ? "URL Core ML modelu není platná." : "The Core ML model URL is invalid."
         case .applicationSupportUnavailable:
             return AppStrings.isCzech ? "Application Support není k dispozici." : "Application Support is unavailable."
+        case .badHTTPStatus(let statusCode):
+            return AppStrings.isCzech
+                ? "Stažení Core ML modelu selhalo (HTTP \(statusCode))."
+                : "Failed to download Core ML model (HTTP \(statusCode))."
+        case .invalidDownloadedPayload:
+            return AppStrings.isCzech
+                ? "Stažený Core ML soubor není platný model."
+                : "Downloaded Core ML payload is not a valid model."
         }
     }
 }
@@ -44,7 +54,7 @@ struct CoreMLModelInstaller {
             case .classifier:
                 return "https://ml-assets.apple.com/coreml/models/Image/ImageClassification/MobileNetV2/MobileNetV2FP16.mlmodel"
             case .detector:
-                return "https://ml-assets.apple.com/coreml/models/ObjectDetection/YOLOv3Tiny/YOLOv3TinyFP16.mlmodel"
+                return "https://ml-assets.apple.com/coreml/models/Image/ObjectDetection/YOLOv3Tiny/YOLOv3TinyFP16.mlmodel"
             }
         }
     }
@@ -98,12 +108,25 @@ struct CoreMLModelInstaller {
             try await downloadModel(kind, to: rawURL)
         }
 
+        do {
+            try await compileModel(rawURL: rawURL, compiledURL: compiledURL)
+        } catch {
+            // Recover from stale/corrupted cached payload by forcing a clean re-download once.
+            try? fileManager.removeItem(at: rawURL)
+            try? fileManager.removeItem(at: compiledURL)
+            try await downloadModel(kind, to: rawURL)
+            try await compileModel(rawURL: rawURL, compiledURL: compiledURL)
+        }
+
+        return compiledURL
+    }
+
+    private func compileModel(rawURL: URL, compiledURL: URL) async throws {
         let temporaryCompiledURL = try await MLModel.compileModel(at: rawURL)
         if fileManager.fileExists(atPath: compiledURL.path) {
             try? fileManager.removeItem(at: compiledURL)
         }
         try fileManager.copyItem(at: temporaryCompiledURL, to: compiledURL)
-        return compiledURL
     }
 
     private func ensureDirectory() throws {
@@ -111,11 +134,25 @@ struct CoreMLModelInstaller {
     }
 
     private func downloadModel(_ kind: ModelKind, to destinationURL: URL) async throws {
-        let (temporaryURL, _) = try await URLSession.shared.download(from: try remoteModelURL(for: kind))
+        let (temporaryURL, response) = try await URLSession.shared.download(from: try remoteModelURL(for: kind))
+        if let httpResponse = response as? HTTPURLResponse,
+           !(200 ... 299).contains(httpResponse.statusCode) {
+            throw CoreMLModelInstallerError.badHTTPStatus(httpResponse.statusCode)
+        }
+
         if fileManager.fileExists(atPath: destinationURL.path) {
             try? fileManager.removeItem(at: destinationURL)
         }
         try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+
+        let payloadPrefix = (try? Data(contentsOf: destinationURL, options: .mappedIfSafe).prefix(96)) ?? Data()
+        if !payloadPrefix.isEmpty {
+            let prefixString = String(data: payloadPrefix, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            if prefixString.hasPrefix("<?xml") || prefixString.hasPrefix("<html") || prefixString.contains("<error>") {
+                try? fileManager.removeItem(at: destinationURL)
+                throw CoreMLModelInstallerError.invalidDownloadedPayload
+            }
+        }
 
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
