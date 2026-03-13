@@ -177,6 +177,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private var focusIndicatorCenterYConstraint: NSLayoutConstraint?
     private var isSpeakingResult = false
     private var liveOCRBlocks: [RecognizedTextBlock] = []
+    private var liveOCRSample: TextRecognitionSample?
     private var liveOCRDisplayBlocks: [OCRTextOverlayView.DisplayBlock] = []
     private var selectedOCRText: String?
     private var latestDocumentQuad: DetectedDocumentQuad?
@@ -1351,7 +1352,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             return "\(summary) • \(preferredFPS) \(AppStrings.fps)"
         }
         if isLiveOCREnabled {
-            return "\(AppStrings.liveOCRHint) • \(preferredFPS) \(AppStrings.fps)"
+            let summary = liveOCRSample?.compactSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = (summary?.isEmpty == false ? summary : AppStrings.liveOCRHint) ?? AppStrings.liveOCRHint
+            return "\(text) • \(preferredFPS) \(AppStrings.fps)"
         }
         if isScannerEnabled {
             return "\(AppStrings.scannerAimHint) • \(preferredFPS) \(AppStrings.fps)"
@@ -1404,11 +1407,12 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func currentLiveOCRText() -> String? {
+        guard isLiveOCREnabled else { return nil }
         let selected = selectedOCRText?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let selected, !selected.isEmpty {
             return selected
         }
-        let combined = liveOCRBlocks.prefix(8).map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined = liveOCRSample?.combinedText.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return combined.isEmpty ? nil : combined
     }
 
@@ -2637,6 +2641,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private func handleRecognizedTextSample(_ sample: TextRecognitionSample) {
         guard latestImageData == nil, latestVideoURL == nil else { return }
 
+        liveOCRSample = sample
         liveOCRBlocks = sample.blocks
         liveOCRDisplayBlocks = sample.blocks.map { block in
             let rect = previewView.previewLayer.layerRectConverted(fromMetadataOutputRect: block.boundingBox)
@@ -2646,10 +2651,6 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         if let selectedOCRText,
            !liveOCRDisplayBlocks.contains(where: { $0.text == selectedOCRText }) {
             self.selectedOCRText = nil
-        }
-
-        if currentLiveOCRText() == nil, let first = liveOCRBlocks.first?.text {
-            selectedOCRText = first
         }
 
         ocrOverlayView.update(blocks: liveOCRDisplayBlocks, selectedText: selectedOCRText)

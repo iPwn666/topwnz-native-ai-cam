@@ -479,9 +479,76 @@ struct RecognizedTextBlock {
     let confidence: Float
 }
 
+struct DetectedTextEntity {
+    enum Kind: CaseIterable, Hashable {
+        case email
+        case phone
+        case url
+        case iban
+        case amount
+        case date
+
+        var sectionTitle: String {
+            switch self {
+            case .email: return AppStrings.ocrSectionEmails
+            case .phone: return AppStrings.ocrSectionPhones
+            case .url: return AppStrings.ocrSectionURLs
+            case .iban: return AppStrings.ocrSectionIBANs
+            case .amount: return AppStrings.ocrSectionAmounts
+            case .date: return AppStrings.ocrSectionDates
+            }
+        }
+    }
+
+    let kind: Kind
+    let value: String
+}
+
 struct TextRecognitionSample {
     let blocks: [RecognizedTextBlock]
-    let combinedText: String
+    let normalizedText: String
+    let entities: [DetectedTextEntity]
+
+    static let empty = TextRecognitionSample(blocks: [], normalizedText: "", entities: [])
+
+    var combinedText: String {
+        var sections: [String] = []
+        let grouped = Dictionary(grouping: entities, by: \.kind)
+
+        for kind in DetectedTextEntity.Kind.allCases {
+            guard let values = grouped[kind], !values.isEmpty else { continue }
+            sections.append("\(kind.sectionTitle):")
+            sections.append(contentsOf: values.prefix(4).map { "• \($0.value)" })
+            sections.append("")
+        }
+
+        if !normalizedText.isEmpty {
+            sections.append("\(AppStrings.ocrSectionText):")
+            sections.append(normalizedText)
+        }
+
+        return sections.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var compactSummary: String {
+        var items: [String] = []
+        let grouped = Dictionary(grouping: entities, by: \.kind)
+
+        if let emails = grouped[.email], !emails.isEmpty {
+            items.append("\(emails.count)x \(AppStrings.ocrSectionEmails.lowercased())")
+        }
+        if let phones = grouped[.phone], !phones.isEmpty {
+            items.append("\(phones.count)x \(AppStrings.ocrSectionPhones.lowercased())")
+        }
+        if let urls = grouped[.url], !urls.isEmpty {
+            items.append("\(urls.count)x \(AppStrings.ocrSectionURLs.lowercased())")
+        }
+        if items.isEmpty, let firstLine = normalizedText.split(separator: "\n").first {
+            items.append(String(firstLine))
+        }
+
+        return items.joined(separator: " • ")
+    }
 }
 
 struct DetectedDocumentQuad {
@@ -525,17 +592,48 @@ struct ObjectDetectionSample: Equatable, Sendable {
     let objects: [DetectedObject]
 
     var combinedText: String {
-        objects
+        groupedObjects
             .prefix(5)
-            .map { "\($0.label) (\(Int(($0.confidence * 100).rounded()))%)" }
+            .map { object in
+                let score = Int((object.confidence * 100).rounded())
+                if object.count > 1 {
+                    return "\(object.count)x \(object.label) (\(score)%)"
+                }
+                return "\(object.label) (\(score)%)"
+            }
             .joined(separator: "\n")
     }
 
     var compactSummary: String {
-        objects
+        groupedObjects
             .prefix(4)
-            .map { "\($0.label) \(Int(($0.confidence * 100).rounded()))%" }
+            .map { object in
+                let score = Int((object.confidence * 100).rounded())
+                let prefix = object.count > 1 ? "\(object.count)x " : ""
+                return "\(prefix)\(object.label) \(score)%"
+            }
             .joined(separator: " • ")
+    }
+
+    private var groupedObjects: [(label: String, count: Int, confidence: Float)] {
+        var groups: [(label: String, count: Int, confidence: Float)] = []
+
+        for object in objects {
+            if let index = groups.firstIndex(where: { $0.label == object.label }) {
+                groups[index].count += 1
+                groups[index].confidence = max(groups[index].confidence, object.confidence)
+            } else {
+                groups.append((label: object.label, count: 1, confidence: object.confidence))
+            }
+        }
+
+        return groups
+            .sorted { lhs, rhs in
+                if lhs.count == rhs.count {
+                    return lhs.confidence > rhs.confidence
+                }
+                return lhs.count > rhs.count
+            }
     }
 }
 
@@ -1236,7 +1334,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.mlClassificationEnabled = false
                     self.objectDetectionEnabled = false
                     DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
+                        self?.onRecognizedText?(.empty)
                         self?.onDetectedDocument?(nil)
                         self?.onImageClassification?(nil)
                         self?.onDetectedObjects?(nil)
@@ -1268,7 +1366,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                     }
                 } else {
                     DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
+                        self?.onRecognizedText?(.empty)
                     }
                 }
                 self.lastError = nil
@@ -1290,7 +1388,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.objectDetectionEnabled = false
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
+                        self?.onRecognizedText?(.empty)
                         self?.onImageClassification?(nil)
                         self?.onDetectedObjects?(nil)
                     }
@@ -1336,7 +1434,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.objectDetectionHistory.removeAll()
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
+                        self?.onRecognizedText?(.empty)
                         self?.onDetectedDocument?(nil)
                         self?.onDetectedObjects?(nil)
                     }
@@ -1381,7 +1479,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                     self.classificationHistory.removeAll()
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
+                        self?.onRecognizedText?(.empty)
                         self?.onDetectedDocument?(nil)
                         self?.onImageClassification?(nil)
                     }
@@ -1423,8 +1521,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                         return $0.boundingBox.minX < $1.boundingBox.minX
                     }
 
-                    let combinedText = blocks.map(\.text).joined(separator: "\n")
-                    continuation.resume(returning: TextRecognitionSample(blocks: blocks, combinedText: combinedText))
+                    continuation.resume(returning: Self.textRecognitionSample(from: blocks))
                 }
 
                 request.recognitionLevel = .accurate
@@ -1479,6 +1576,96 @@ final class CameraService: NSObject, @unchecked Sendable {
                 }
             }
         }
+    }
+
+    private static func textRecognitionSample(from blocks: [RecognizedTextBlock]) -> TextRecognitionSample {
+        let normalizedText = normalizedRecognizedText(from: blocks)
+        let entities = extractedTextEntities(from: normalizedText)
+        return TextRecognitionSample(blocks: blocks, normalizedText: normalizedText, entities: entities)
+    }
+
+    private static func normalizedRecognizedText(from blocks: [RecognizedTextBlock]) -> String {
+        guard !blocks.isEmpty else { return "" }
+
+        var lines: [[RecognizedTextBlock]] = []
+        for block in blocks {
+            if let lastIndex = lines.indices.last,
+               let anchor = lines[lastIndex].first,
+               abs(anchor.boundingBox.minY - block.boundingBox.minY) < 0.022 {
+                lines[lastIndex].append(block)
+            } else {
+                lines.append([block])
+            }
+        }
+
+        let cleanedLines = lines
+            .map { line -> String in
+                let merged = line
+                    .sorted { $0.boundingBox.minX < $1.boundingBox.minX }
+                    .map(\.text)
+                    .joined(separator: " ")
+                return cleanedOCRLine(merged)
+            }
+            .filter { !$0.isEmpty }
+
+        return cleanedLines.joined(separator: "\n")
+    }
+
+    private static func cleanedOCRLine(_ raw: String) -> String {
+        var line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !line.isEmpty else { return "" }
+
+        let replacements: [(String, String)] = [
+            ("\\s+", " "),
+            ("\\s+([,.;:!?%])", "$1"),
+            ("\\(\\s+", "("),
+            ("\\s+\\)", ")"),
+            ("\\s+/", "/"),
+            ("/\\s+", "/"),
+            ("\\s+-\\s+", " - "),
+        ]
+
+        for (pattern, template) in replacements {
+            line = line.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+        }
+
+        return line
+    }
+
+    private static func extractedTextEntities(from text: String) -> [DetectedTextEntity] {
+        guard !text.isEmpty else { return [] }
+
+        struct ExtractionRule {
+            let kind: DetectedTextEntity.Kind
+            let pattern: String
+        }
+
+        let rules: [ExtractionRule] = [
+            .init(kind: .email, pattern: #"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b"#),
+            .init(kind: .url, pattern: #"(?:(?:https?://|www\.)[^\s]+)"#),
+            .init(kind: .phone, pattern: #"(?:(?:\+|00)\d[\d .\-()]{6,}\d|\b\d[\d .\-()]{7,}\d\b)"#),
+            .init(kind: .iban, pattern: #"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b"#),
+            .init(kind: .amount, pattern: #"\b\d{1,3}(?:[ .]\d{3})*(?:[,.]\d{2})?\s?(?:Kč|CZK|EUR|USD|€|\$)\b"#),
+            .init(kind: .date, pattern: #"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b"#),
+        ]
+
+        var seen = Set<String>()
+        var entities: [DetectedTextEntity] = []
+
+        for rule in rules {
+            guard let regex = try? NSRegularExpression(pattern: rule.pattern, options: [.caseInsensitive]) else { continue }
+            let range = NSRange(text.startIndex..., in: text)
+            for match in regex.matches(in: text, options: [], range: range) {
+                guard let matchRange = Range(match.range, in: text) else { continue }
+                let value = cleanedOCRLine(String(text[matchRange]))
+                let key = "\(rule.kind)-\(value.lowercased())"
+                guard !value.isEmpty, !seen.contains(key) else { continue }
+                seen.insert(key)
+                entities.append(DetectedTextEntity(kind: rule.kind, value: value))
+            }
+        }
+
+        return entities
     }
 
 #if canImport(CoreML)
@@ -1965,8 +2152,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                 return $0.boundingBox.minX < $1.boundingBox.minX
             }
 
-            let combinedText = blocks.prefix(8).map(\.text).joined(separator: "\n")
-            let sample = TextRecognitionSample(blocks: blocks, combinedText: combinedText)
+            let sample = Self.textRecognitionSample(from: blocks)
 
             DispatchQueue.main.async { [weak self] in
                 self?.onRecognizedText?(sample)

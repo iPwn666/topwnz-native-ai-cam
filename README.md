@@ -33,6 +33,10 @@ Veřejné repo:
 - `Scan Vault` s historií, oblíbenými položkami a AI rozborem skenů
 - live OCR přes `Vision`
 - OCR i nad pořízeným snímkem
+- OCR/document post-processing:
+  - skládání fragmentů do čistších řádků
+  - extrakce `e-mail`, `telefon`, `URL`, `IBAN`, `částka`, `datum`
+  - strukturovaný český výstup přímo v appce bez AI roundtripu
 - document mode:
   - live rectangle detection
   - perspektivní korekce po vyfocení
@@ -50,6 +54,7 @@ Veřejné repo:
 - on-device objektová detekce přes `YOLOv3FP16`
   - live overlay boxy s labely
   - detekce i nad pořízeným snímkem
+  - skupinové české shrnutí typu `2x osoba`, `3x auto`
 - AI analýza přes OpenAI `Responses API`
 - české UI a TTS výstup pro AI/OCR výsledky
 

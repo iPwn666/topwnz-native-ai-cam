@@ -81,6 +81,13 @@ enum AppStrings {
     static var documentHint: String { isCzech ? "Zarovnej dokument do obrysu a vyfoť ho." : "Align the document inside the frame and capture it." }
     static var capturedOCRText: String { isCzech ? "Text ze snímku" : "Captured text" }
     static var capturedOCRHint: String { isCzech ? "Text byl rozpoznaný lokálně přes Vision." : "Text was recognized locally with Vision." }
+    static var ocrSectionEmails: String { isCzech ? "E-maily" : "Emails" }
+    static var ocrSectionPhones: String { isCzech ? "Telefony" : "Phones" }
+    static var ocrSectionURLs: String { isCzech ? "Odkazy" : "Links" }
+    static var ocrSectionIBANs: String { isCzech ? "IBAN" : "IBAN" }
+    static var ocrSectionAmounts: String { isCzech ? "Částky" : "Amounts" }
+    static var ocrSectionDates: String { isCzech ? "Data" : "Dates" }
+    static var ocrSectionText: String { isCzech ? "Text" : "Text" }
     static var openLink: String { isCzech ? "Otevřít" : "Open" }
     static var openMail: String { isCzech ? "Mail" : "Mail" }
     static var openPhone: String { isCzech ? "Volat" : "Call" }
