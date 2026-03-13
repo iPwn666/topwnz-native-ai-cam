@@ -14,6 +14,10 @@ Veřejné repo:
 - ruční `EXP / SHR / ISO / FOC`
 - gesture tuning: `↕` přepínání aktivního parametru + `↔` jemné ladění
 - rychlý reset Pro nastavení přes `2-finger double tap` (návrat na Auto)
+- focus polish:
+  - při přepnutí `AF -> MF` se nově zamkne aktuální reálná poloha čočky
+  - live `focus peaking` overlay při `MF` nebo focus tuningu
+  - live focus score v HUD a u `AF/MF` tile
 - minimalistický side-panel sheet:
   - rychlé / detekční / pro sekce
   - dvousloupcová mřížka ovládacích tiles
@@ -29,6 +33,10 @@ Veřejné repo:
   - live rectangle detection
   - perspektivní korekce po vyfocení
 - on-device live ML klasifikace scény/objektů
+- stabilnější live Core ML:
+  - krátké temporální vyhlazení klasifikace i objektové detekce
+  - object detection teď filtruje slabé boxy agresivněji
+  - zapnutí jednoho Core ML režimu potichu předehřívá i druhý model
 - runtime `Core ML` model flow:
   - appka si stáhne oficiální Apple `MobileNetV2`
   - model se zkompiluje přímo na iPhonu

@@ -138,6 +138,8 @@ enum AppStrings {
     static var focus: String { isCzech ? "Fokus" : "Focus" }
     static var autofocus: String { isCzech ? "Autofokus" : "Autofocus" }
     static var manualFocus: String { isCzech ? "Manuální fokus" : "Manual focus" }
+    static var focusPeaking: String { isCzech ? "Focus peaking" : "Focus peaking" }
+    static var focusScore: String { isCzech ? "Ostrost" : "Focus" }
     static var focusLockedHint: String { isCzech ? "Manuální fokus je aktivní." : "Manual focus is active." }
     static var focusExposureLock: String { isCzech ? "AE/AF lock" : "AE/AF lock" }
     static var focusExposureLocked: String { isCzech ? "AE/AF zamčeno" : "AE/AF locked" }

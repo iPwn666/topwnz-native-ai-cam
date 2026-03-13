@@ -466,6 +466,8 @@ struct FrameMonitoringSample {
     let histogram: [Double]
     let overexposedRects: [CGRect]
     let averageLuma: Double
+    let focusScore: Double
+    let focusPeakingRects: [CGRect]
 }
 
 struct RecognizedTextBlock {
@@ -598,6 +600,8 @@ final class CameraService: NSObject, @unchecked Sendable {
     private var lastDocumentDetectionUptime: TimeInterval = 0
     private var lastMLClassificationUptime: TimeInterval = 0
     private var lastObjectDetectionUptime: TimeInterval = 0
+    private var classificationHistory: [ImageClassificationSample] = []
+    private var objectDetectionHistory: [ObjectDetectionSample] = []
 
     var onCodeScanned: ((ScannedCode) -> Void)?
     var onMonitoringSample: ((FrameMonitoringSample) -> Void)?
@@ -1074,7 +1078,7 @@ final class CameraService: NSObject, @unchecked Sendable {
                         self.focusModePreset = .auto
                     case .manual:
                         if device.isLockingFocusWithCustomLensPositionSupported {
-                            let bounded = max(0, min(self.manualFocusPosition, 1))
+                            let bounded = max(0, min(device.lensPosition, 1))
                             device.setFocusModeLocked(lensPosition: bounded, completionHandler: nil)
                             self.manualFocusPosition = bounded
                             self.focusModePreset = .manual
@@ -1304,6 +1308,10 @@ final class CameraService: NSObject, @unchecked Sendable {
 #if canImport(CoreML)
             do {
                 try await prepareDownloadedMLClassifierIfNeeded()
+                Task(priority: .utility) { [weak self] in
+                    guard let self else { return }
+                    try? await self.prepareDownloadedObjectDetectorIfNeeded()
+                }
             } catch {
                 lastError = error.localizedDescription
                 return false
@@ -1316,11 +1324,13 @@ final class CameraService: NSObject, @unchecked Sendable {
                 self.mlClassificationEnabled = enabled
                 self.isProcessingMLClassification = false
                 self.lastMLClassificationUptime = 0
+                self.classificationHistory.removeAll()
                 if enabled {
                     self.scannerEnabled = false
                     self.textRecognitionEnabled = false
                     self.documentDetectionEnabled = false
                     self.objectDetectionEnabled = false
+                    self.objectDetectionHistory.removeAll()
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
                         self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
@@ -1343,6 +1353,10 @@ final class CameraService: NSObject, @unchecked Sendable {
 #if canImport(CoreML)
             do {
                 try await prepareDownloadedObjectDetectorIfNeeded()
+                Task(priority: .utility) { [weak self] in
+                    guard let self else { return }
+                    try? await self.prepareDownloadedMLClassifierIfNeeded()
+                }
             } catch {
                 lastError = error.localizedDescription
                 return false
@@ -1355,11 +1369,13 @@ final class CameraService: NSObject, @unchecked Sendable {
                 self.objectDetectionEnabled = enabled
                 self.isProcessingObjectDetection = false
                 self.lastObjectDetectionUptime = 0
+                self.objectDetectionHistory.removeAll()
                 if enabled {
                     self.scannerEnabled = false
                     self.textRecognitionEnabled = false
                     self.documentDetectionEnabled = false
                     self.mlClassificationEnabled = false
+                    self.classificationHistory.removeAll()
                     self.configureMetadataTypes()
                     DispatchQueue.main.async { [weak self] in
                         self?.onRecognizedText?(TextRecognitionSample(blocks: [], combinedText: ""))
@@ -1813,6 +1829,9 @@ final class CameraService: NSObject, @unchecked Sendable {
         let cellWidth = max(1, width / zebraColumns)
         let cellHeight = max(1, height / zebraRows)
         var zebraRects: [CGRect] = []
+        var focusCells: [(rect: CGRect, strength: Double)] = []
+        var centerFocusTotal = 0.0
+        var centerFocusCount = 0.0
 
         for y in stride(from: 0, to: height, by: sampleStride) {
             let row = baseAddress.advanced(by: y * bytesPerRow)
@@ -1835,14 +1854,23 @@ final class CameraService: NSObject, @unchecked Sendable {
 
                 var overexposed = 0
                 var inspected = 0
+                var gradientTotal = 0.0
+                var gradientSamples = 0.0
                 var y = startY
                 while y < endY {
                     let row = baseAddress.advanced(by: y * bytesPerRow)
+                    let nextRow = baseAddress.advanced(by: min(height - 1, y + max(2, sampleStride)) * bytesPerRow)
                     var x = startX
                     while x < endX {
-                        if Int(row[x]) >= zebraThreshold {
+                        let current = Int(row[x])
+                        if current >= zebraThreshold {
                             overexposed += 1
                         }
+                        let nextX = min(endX - 1, x + max(2, sampleStride))
+                        let diffX = abs(Int(row[nextX]) - current)
+                        let diffY = abs(Int(nextRow[x]) - current)
+                        gradientTotal += Double(diffX + diffY)
+                        gradientSamples += 1
                         inspected += 1
                         x += max(2, sampleStride)
                     }
@@ -1861,16 +1889,41 @@ final class CameraService: NSObject, @unchecked Sendable {
                         )
                     )
                 }
+
+                let focusStrength = gradientSamples > 0 ? gradientTotal / (gradientSamples * 510.0) : 0
+                let normalizedRect = CGRect(
+                    x: CGFloat(startX) / CGFloat(width),
+                    y: CGFloat(startY) / CGFloat(height),
+                    width: CGFloat(endX - startX) / CGFloat(width),
+                    height: CGFloat(endY - startY) / CGFloat(height)
+                )
+                focusCells.append((rect: normalizedRect, strength: focusStrength))
+                if columnIndex >= 3, columnIndex <= 8, rowIndex >= 5, rowIndex <= 14 {
+                    centerFocusTotal += focusStrength
+                    centerFocusCount += 1
+                }
             }
         }
 
         let maxBin = histogram.max() ?? 1
         let normalizedHistogram = histogram.map { maxBin > 0 ? $0 / maxBin : 0 }
         let averageLuma = sampleCount > 0 ? totalLuma / sampleCount : 0
+        let averageCenterFocus = centerFocusCount > 0 ? centerFocusTotal / centerFocusCount : 0
+        let averageFocusStrength = focusCells.isEmpty ? 0 : focusCells.reduce(0) { $0 + $1.strength } / Double(focusCells.count)
+        let maxFocusStrength = focusCells.map(\.strength).max() ?? 0
+        let focusThreshold = max(0.035, averageFocusStrength * 1.8, maxFocusStrength * 0.52)
+        let focusPeakingRects = focusCells
+            .filter { $0.strength >= focusThreshold }
+            .sorted { $0.strength > $1.strength }
+            .prefix(20)
+            .map(\.rect)
+        let focusScore = min(1.0, averageCenterFocus / 0.085)
         let sample = FrameMonitoringSample(
             histogram: normalizedHistogram,
             overexposedRects: zebraRects,
-            averageLuma: averageLuma
+            averageLuma: averageLuma,
+            focusScore: focusScore,
+            focusPeakingRects: focusPeakingRects
         )
 
         DispatchQueue.main.async { [weak self] in
@@ -1999,8 +2052,9 @@ final class CameraService: NSObject, @unchecked Sendable {
         guard let request = makeClassificationRequest(resultHandler: { [weak self] observations in
             guard let self else { return }
             let sample = Self.classificationSample(from: observations)
+            let stableSample = self.smoothedClassificationSample(from: sample)
             DispatchQueue.main.async { [weak self] in
-                self?.onImageClassification?(sample)
+                self?.onImageClassification?(stableSample)
             }
             self.sessionQueue.async {
                 self.isProcessingMLClassification = false
@@ -2035,8 +2089,9 @@ final class CameraService: NSObject, @unchecked Sendable {
         guard let request = makeObjectDetectionRequest(resultHandler: { [weak self] observations in
             guard let self else { return }
             let sample = Self.objectDetectionSample(from: observations)
+            let stableSample = self.smoothedObjectDetectionSample(from: sample)
             DispatchQueue.main.async { [weak self] in
-                self?.onDetectedObjects?(sample)
+                self?.onDetectedObjects?(stableSample)
             }
             self.sessionQueue.async {
                 self.isProcessingObjectDetection = false
@@ -2107,6 +2162,7 @@ final class CameraService: NSObject, @unchecked Sendable {
             .prefix(6)
             .compactMap { observation -> DetectedObject? in
                 guard let label = observation.labels.first else { return nil }
+                guard label.confidence >= 0.22 else { return nil }
                 let rect = CGRect(
                     x: observation.boundingBox.minX,
                     y: 1 - observation.boundingBox.maxY,
@@ -2119,6 +2175,101 @@ final class CameraService: NSObject, @unchecked Sendable {
                     boundingBox: rect
                 )
             }
+        return objects.isEmpty ? nil : ObjectDetectionSample(objects: Array(objects))
+    }
+
+    private func smoothedClassificationSample(from sample: ImageClassificationSample?) -> ImageClassificationSample? {
+        guard let sample else {
+            classificationHistory.removeAll()
+            return nil
+        }
+
+        classificationHistory.append(sample)
+        if classificationHistory.count > 3 {
+            classificationHistory.removeFirst(classificationHistory.count - 3)
+        }
+
+        var aggregated: [String: Float] = [:]
+        let divisor = Float(classificationHistory.count)
+
+        for item in classificationHistory {
+            for label in item.labels {
+                aggregated[label.title, default: 0] += label.confidence
+            }
+        }
+
+        let labels = aggregated
+            .compactMap { title, total -> ImageClassificationLabel? in
+                let confidence = total / divisor
+                guard confidence >= 0.18 else { return nil }
+                return ImageClassificationLabel(title: title, confidence: confidence)
+            }
+            .sorted { $0.confidence > $1.confidence }
+            .prefix(4)
+
+        return labels.isEmpty ? nil : ImageClassificationSample(labels: Array(labels))
+    }
+
+    private func smoothedObjectDetectionSample(from sample: ObjectDetectionSample?) -> ObjectDetectionSample? {
+        guard let sample else {
+            objectDetectionHistory.removeAll()
+            return nil
+        }
+
+        objectDetectionHistory.append(sample)
+        if objectDetectionHistory.count > 3 {
+            objectDetectionHistory.removeFirst(objectDetectionHistory.count - 3)
+        }
+
+        struct ObjectKey: Hashable {
+            let label: String
+            let xBucket: Int
+            let yBucket: Int
+        }
+
+        var totals: [ObjectKey: (confidence: Float, rect: CGRect, count: Int)] = [:]
+
+        for item in objectDetectionHistory {
+            for object in item.objects {
+                let centerX = object.boundingBox.midX
+                let centerY = object.boundingBox.midY
+                let key = ObjectKey(
+                    label: object.label,
+                    xBucket: Int((centerX * 6).rounded()),
+                    yBucket: Int((centerY * 8).rounded())
+                )
+
+                if var existing = totals[key] {
+                    existing.confidence += object.confidence
+                    existing.rect.origin.x += object.boundingBox.origin.x
+                    existing.rect.origin.y += object.boundingBox.origin.y
+                    existing.rect.size.width += object.boundingBox.width
+                    existing.rect.size.height += object.boundingBox.height
+                    existing.count += 1
+                    totals[key] = existing
+                } else {
+                    totals[key] = (object.confidence, object.boundingBox, 1)
+                }
+            }
+        }
+
+        let historyCount = max(1, objectDetectionHistory.count)
+        let objects = totals
+            .compactMap { key, value -> DetectedObject? in
+                let confidence = value.confidence / Float(historyCount)
+                guard confidence >= 0.26 else { return nil }
+                let count = CGFloat(max(1, value.count))
+                let rect = CGRect(
+                    x: value.rect.origin.x / count,
+                    y: value.rect.origin.y / count,
+                    width: value.rect.size.width / count,
+                    height: value.rect.size.height / count
+                )
+                return DetectedObject(label: key.label, confidence: confidence, boundingBox: rect)
+            }
+            .sorted { $0.confidence > $1.confidence }
+            .prefix(6)
+
         return objects.isEmpty ? nil : ObjectDetectionSample(objects: Array(objects))
     }
 

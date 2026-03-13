@@ -87,6 +87,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let gridOverlayView = GridOverlayView()
     private let levelView = HorizonLevelView()
     private let zebraOverlayView = ZebraOverlayView()
+    private let focusPeakingOverlayView = FocusPeakingOverlayView()
     private let ocrOverlayView = OCRTextOverlayView()
     private let documentOverlayView = DocumentQuadOverlayView()
     private let objectOverlayView = ObjectDetectionOverlayView()
@@ -176,6 +177,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private var capturedClassification: ImageClassificationSample?
     private var liveObjectDetection: ObjectDetectionSample?
     private var capturedObjectDetection: ObjectDetectionSample?
+    private var liveFocusScore: Double = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -262,6 +264,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         levelView.isHidden = false
         zebraOverlayView.translatesAutoresizingMaskIntoConstraints = false
         zebraOverlayView.isHidden = true
+        focusPeakingOverlayView.translatesAutoresizingMaskIntoConstraints = false
+        focusPeakingOverlayView.isHidden = true
         ocrOverlayView.translatesAutoresizingMaskIntoConstraints = false
         ocrOverlayView.isHidden = true
         documentOverlayView.translatesAutoresizingMaskIntoConstraints = false
@@ -481,7 +485,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func layoutUI() {
-        [previewView, imageView, zebraOverlayView, ocrOverlayView, documentOverlayView, objectOverlayView, gridOverlayView, topFadeView, bottomFadeView, statusCard, modeCard, toolsPanelCard, toolsToggleButton, resultCard, analyzeButton, shareButton, captureButton, permissionCard, activityIndicator, focusIndicatorView, scannerFrameView, tuningHUDCard, recordingHUDCard, histogramCard, levelView, brandLinkButton].forEach {
+        [previewView, imageView, zebraOverlayView, focusPeakingOverlayView, ocrOverlayView, documentOverlayView, objectOverlayView, gridOverlayView, topFadeView, bottomFadeView, statusCard, modeCard, toolsPanelCard, toolsToggleButton, resultCard, analyzeButton, shareButton, captureButton, permissionCard, activityIndicator, focusIndicatorView, scannerFrameView, tuningHUDCard, recordingHUDCard, histogramCard, levelView, brandLinkButton].forEach {
             view.addSubview($0)
         }
 
@@ -557,6 +561,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             zebraOverlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             zebraOverlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             zebraOverlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            focusPeakingOverlayView.topAnchor.constraint(equalTo: view.topAnchor),
+            focusPeakingOverlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            focusPeakingOverlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            focusPeakingOverlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             ocrOverlayView.topAnchor.constraint(equalTo: view.topAnchor),
             ocrOverlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -717,6 +726,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         imageView.isHidden = !hasImage
         permissionCard.isHidden = isAuthorized
         zebraOverlayView.isHidden = !(showLiveAssists && isZebraVisible)
+        focusPeakingOverlayView.isHidden = !(showLiveAssists && shouldShowFocusPeakingOverlay())
         ocrOverlayView.isHidden = !(showLiveAssists && isLiveOCREnabled)
         documentOverlayView.isHidden = !(showLiveAssists && isDocumentModeEnabled)
         objectOverlayView.isHidden = !(showLiveAssists && isObjectDetectionEnabled)
@@ -915,7 +925,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func updateAutofocusButton() {
-        autofocusButton.configuration?.subtitle = AppStrings.focusModeLabel(settings.focusMode)
+        if settings.focusMode == .manual {
+            autofocusButton.configuration?.subtitle = "MF \(focusScorePercentText())"
+        } else {
+            autofocusButton.configuration?.subtitle = AppStrings.focusModeLabel(settings.focusMode)
+        }
         autofocusButton.tintColor = settings.focusMode == .auto ? UIColor.systemGreen : UIColor.systemOrange
     }
 
@@ -1223,6 +1237,10 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         return AppStrings.livePreview
     }
 
+    private func focusScorePercentText() -> String {
+        "\(Int((liveFocusScore * 100).rounded()))%"
+    }
+
     private func secondaryStatusText(hasImage: Bool, hasVideo: Bool, hasScan: Bool, hasAnalysis: Bool) -> String {
         if !cameraService.authorizationStatus.isAuthorizedForCamera {
             return AppStrings.permissionBody
@@ -1259,6 +1277,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         }
         if isDocumentModeEnabled {
             return "\(AppStrings.documentHint) • \(preferredFPS) \(AppStrings.fps)"
+        }
+        if shouldShowFocusPeakingOverlay() {
+            return "\(AppStrings.focusPeaking) • \(AppStrings.focusScore) \(focusScorePercentText()) • \(AppStrings.swipeTuningCompactHint)"
         }
         if isObjectDetectionEnabled {
             let summary = liveObjectDetection?.compactSummary ?? AppStrings.objectDetectHint
@@ -2098,6 +2119,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func showFocusIndicator(at point: CGPoint) {
+        focusIndicatorView.update(mode: settings.focusMode, locked: isFocusExposureLocked)
         focusIndicatorCenterXConstraint?.constant = point.x
         focusIndicatorCenterYConstraint?.constant = point.y
         view.layoutIfNeeded()
@@ -2448,9 +2470,19 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         let lumaPercent = Int((sample.averageLuma / 255.0 * 100.0).rounded())
         histogramView.update(bins: sample.histogram)
         lumaLabel.text = "\(AppStrings.luma) \(lumaPercent)%"
+        liveFocusScore = sample.focusScore
 
         let mappedRects = sample.overexposedRects.map { previewView.previewLayer.layerRectConverted(fromMetadataOutputRect: $0) }
         zebraOverlayView.update(rects: mappedRects)
+        let mappedPeakingRects = sample.focusPeakingRects.map { previewView.previewLayer.layerRectConverted(fromMetadataOutputRect: $0) }
+        focusPeakingOverlayView.update(rects: mappedPeakingRects)
+
+        if shouldShowFocusPeakingOverlay(), latestImageData == nil, latestVideoURL == nil {
+            updateAutofocusButton()
+            if tuningHUDCard.alpha > 0.01 {
+                updateTuningHUD(text: tuningHUDText(), animated: false)
+            }
+        }
     }
 
     private func handleRecognizedTextSample(_ sample: TextRecognitionSample) {
@@ -2711,6 +2743,10 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         }
     }
 
+    private func shouldShowFocusPeakingOverlay() -> Bool {
+        settings.focusMode == .manual || activeTuningControl == .focus
+    }
+
     private func selectActiveTuningControl(_ control: TuningControl, showHUD: Bool) {
         activeTuningControl = control
         updateTuningButtons()
@@ -2951,7 +2987,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         }
         let focus = settings.focusMode == .auto
             ? AppStrings.autofocus
-            : "\(AppStrings.manualFocus) \(String(format: "%.2f", settings.manualFocusPosition))"
+            : "\(AppStrings.manualFocus) \(String(format: "%.2f", settings.manualFocusPosition)) • \(AppStrings.focusScore) \(focusScorePercentText())"
         return "\(AppStrings.exposure) \(exposure) • \(AppStrings.shutter) \(shutter) • \(iso)\n\(AppStrings.whiteBalance) \(AppStrings.whiteBalanceLabel(settings.whiteBalancePreset)) • \(focus)"
     }
 
@@ -3288,6 +3324,7 @@ private final class OverlayGradientView: UIView {
 private final class FocusIndicatorView: UIView {
     private let horizontal = UIView()
     private let vertical = UIView()
+    private let modeLabel = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -3304,6 +3341,12 @@ private final class FocusIndicatorView: UIView {
             addSubview($0)
         }
 
+        modeLabel.translatesAutoresizingMaskIntoConstraints = false
+        modeLabel.font = .monospacedSystemFont(ofSize: 11, weight: .bold)
+        modeLabel.textAlignment = .center
+        modeLabel.textColor = UIColor.systemYellow.withAlphaComponent(0.94)
+        addSubview(modeLabel)
+
         NSLayoutConstraint.activate([
             horizontal.centerXAnchor.constraint(equalTo: centerXAnchor),
             horizontal.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -3314,12 +3357,37 @@ private final class FocusIndicatorView: UIView {
             vertical.centerYAnchor.constraint(equalTo: centerYAnchor),
             vertical.widthAnchor.constraint(equalToConstant: 2),
             vertical.heightAnchor.constraint(equalToConstant: 36),
+
+            modeLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            modeLabel.topAnchor.constraint(equalTo: vertical.bottomAnchor, constant: 6),
         ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func update(mode: FocusModePreset, locked: Bool) {
+        let tint: UIColor
+        let text: String
+
+        if locked {
+            tint = UIColor.systemRed
+            text = "LOCK"
+        } else if mode == .manual {
+            tint = UIColor.systemOrange
+            text = "MF"
+        } else {
+            tint = UIColor.systemGreen
+            text = "AF"
+        }
+
+        layer.borderColor = tint.cgColor
+        horizontal.backgroundColor = tint.withAlphaComponent(0.94)
+        vertical.backgroundColor = tint.withAlphaComponent(0.94)
+        modeLabel.textColor = tint.withAlphaComponent(0.94)
+        modeLabel.text = text
     }
 }
 
@@ -3560,6 +3628,45 @@ private final class ZebraOverlayView: UIView {
             }
         }
         stripesLayer.path = path.cgPath
+    }
+}
+
+private final class FocusPeakingOverlayView: UIView {
+    private let peaksLayer = CAShapeLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        peaksLayer.strokeColor = UIColor.systemOrange.withAlphaComponent(0.9).cgColor
+        peaksLayer.fillColor = UIColor.systemOrange.withAlphaComponent(0.08).cgColor
+        peaksLayer.lineWidth = 1.1
+        layer.addSublayer(peaksLayer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        peaksLayer.frame = bounds
+    }
+
+    func update(rects: [CGRect]) {
+        let path = UIBezierPath()
+        for rect in rects where rect.width > 6 && rect.height > 6 {
+            let clipped = rect.intersection(bounds)
+            guard !clipped.isNull, !clipped.isEmpty else { continue }
+            let rounded = UIBezierPath(roundedRect: clipped.insetBy(dx: 1, dy: 1), cornerRadius: 6)
+            path.append(rounded)
+
+            let inset = clipped.insetBy(dx: 3, dy: 3)
+            path.move(to: CGPoint(x: inset.minX, y: inset.maxY))
+            path.addLine(to: CGPoint(x: inset.maxX, y: inset.minY))
+        }
+        peaksLayer.path = path.cgPath
     }
 }
 
