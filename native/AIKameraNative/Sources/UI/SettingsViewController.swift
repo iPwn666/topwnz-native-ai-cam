@@ -9,6 +9,7 @@ final class SettingsViewController: UIViewController {
     private let apiKeyField = UITextField()
     private let modelField = UITextField()
     private let autoAnalyzeSwitch = UISwitch()
+    private let locationMetadataSwitch = UISwitch()
     private let modeControl = UISegmentedControl(items: AnalysisMode.allCases.map(AppStrings.modeLabel))
     private let exposureSlider = UISlider()
     private let exposureValueLabel = UILabel()
@@ -71,6 +72,7 @@ final class SettingsViewController: UIViewController {
         modelField.autocorrectionType = .no
 
         autoAnalyzeSwitch.isOn = draft.autoAnalyze
+        locationMetadataSwitch.isOn = draft.locationMetadataEnabled
         modeControl.selectedSegmentIndex = AnalysisMode.allCases.firstIndex(of: draft.analysisMode) ?? 0
         exposureSlider.minimumValue = -2
         exposureSlider.maximumValue = 2
@@ -141,6 +143,7 @@ final class SettingsViewController: UIViewController {
         stack.addArrangedSubview(makeFieldCard(title: AppStrings.model, field: modelField))
         stack.addArrangedSubview(wrapInCard(requestHintLabel))
         stack.addArrangedSubview(makeSwitchCard())
+        stack.addArrangedSubview(makeLocationSwitchCard())
         stack.addArrangedSubview(makeModeCard())
         stack.addArrangedSubview(makeCameraTuningCard())
     }
@@ -188,6 +191,28 @@ final class SettingsViewController: UIViewController {
         leftStack.spacing = 6
 
         let row = UIStackView(arrangedSubviews: [leftStack, autoAnalyzeSwitch])
+        row.axis = .horizontal
+        row.spacing = 12
+        row.alignment = .center
+
+        return wrapInCard(row)
+    }
+
+    private func makeLocationSwitchCard() -> UIView {
+        let label = UILabel()
+        label.text = AppStrings.locationForCaptures
+        label.font = .preferredFont(forTextStyle: .headline)
+
+        let body = UILabel()
+        body.text = AppStrings.locationHint
+        body.numberOfLines = 0
+        body.textColor = .secondaryLabel
+
+        let leftStack = UIStackView(arrangedSubviews: [label, body])
+        leftStack.axis = .vertical
+        leftStack.spacing = 6
+
+        let row = UIStackView(arrangedSubviews: [leftStack, locationMetadataSwitch])
         row.axis = .horizontal
         row.spacing = 12
         row.alignment = .center
@@ -309,6 +334,7 @@ final class SettingsViewController: UIViewController {
         draft.apiKey = apiKeyField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         draft.model = modelField.text?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? AppSettings.default.model
         draft.autoAnalyze = autoAnalyzeSwitch.isOn
+        draft.locationMetadataEnabled = locationMetadataSwitch.isOn
         draft.analysisMode = AnalysisMode.allCases[safe: modeControl.selectedSegmentIndex] ?? .scene
         draft.exposureBias = Double(exposureSlider.value)
         draft.shutterDurationSeconds = currentShutterPreset(at: Int(shutterSlider.value.rounded()))

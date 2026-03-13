@@ -36,7 +36,7 @@ struct CoreMLModelInstaller {
             case .classifier:
                 return "MobileNetV2FP16.mlmodel"
             case .detector:
-                return "YOLOv3TinyFP16.mlmodel"
+                return "YOLOv3FP16.mlmodel"
             }
         }
 
@@ -45,7 +45,7 @@ struct CoreMLModelInstaller {
             case .classifier:
                 return "MobileNetV2FP16.mlmodelc"
             case .detector:
-                return "YOLOv3TinyFP16.mlmodelc"
+                return "YOLOv3FP16.mlmodelc"
             }
         }
 
@@ -54,7 +54,7 @@ struct CoreMLModelInstaller {
             case .classifier:
                 return "https://ml-assets.apple.com/coreml/models/Image/ImageClassification/MobileNetV2/MobileNetV2FP16.mlmodel"
             case .detector:
-                return "https://ml-assets.apple.com/coreml/models/Image/ObjectDetection/YOLOv3Tiny/YOLOv3TinyFP16.mlmodel"
+                return "https://ml-assets.apple.com/coreml/models/Image/ObjectDetection/YOLOv3/YOLOv3FP16.mlmodel"
             }
         }
     }

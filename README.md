@@ -23,6 +23,10 @@ Veřejné repo:
   - dvousloupcová mřížka ovládacích tiles
   - přímý `Reset` pro návrat Pro režimu na Auto
 - white balance preset, night boost, `30/60 FPS`
+- GPS metadata do fotek:
+  - quick tile `GPS` i přepínač v nastavení
+  - `when-in-use` oprávnění přes `CoreLocation`
+  - zápis EXIF GPS tagů přímo do pořízených fotek
 - grid, level, histogram, zebry, luma monitoring
 - QR/barcode scanner s chytrými akcemi
 - `Wi-Fi`, `URL`, `mailto`, `tel`, `sms`, `geo`, `FaceTime`, `vCard`, `VEVENT`
@@ -33,6 +37,8 @@ Veřejné repo:
   - live rectangle detection
   - perspektivní korekce po vyfocení
 - on-device live ML klasifikace scény/objektů
+- české on-device labely:
+  - objektová detekce i klasifikace se teď překládají do češtiny přímo v appce
 - stabilnější live Core ML:
   - krátké temporální vyhlazení klasifikace i objektové detekce
   - object detection teď filtruje slabé boxy agresivněji
@@ -41,7 +47,7 @@ Veřejné repo:
   - appka si stáhne oficiální Apple `MobileNetV2`
   - model se zkompiluje přímo na iPhonu
   - pak se používá pro live i captured klasifikaci
-- on-device objektová detekce přes `YOLOv3TinyFP16`
+- on-device objektová detekce přes `YOLOv3FP16`
   - live overlay boxy s labely
   - detekce i nad pořízeným snímkem
 - AI analýza přes OpenAI `Responses API`
@@ -127,7 +133,7 @@ Lokální ML teď používá dva režimy:
 
 - systémový `Vision` pro OCR, document detection a další live requesty
 - vlastní runtime `Core ML` asset path pro klasifikaci přes Apple `MobileNetV2`
-- vlastní runtime `Core ML` asset path pro objektovou detekci přes Apple `YOLOv3TinyFP16`
+- vlastní runtime `Core ML` asset path pro objektovou detekci přes Apple `YOLOv3FP16`
 
 Model se nestaví při build time na hostu. Appka si ho připraví až na zařízení, takže i Linux/TrollStore workflow zůstává jednoduchý.
 

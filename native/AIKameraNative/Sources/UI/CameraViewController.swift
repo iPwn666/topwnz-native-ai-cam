@@ -7,6 +7,9 @@ import CoreMotion
 import CoreImage
 import CoreImage.CIFilterBuiltins
 #endif
+#if canImport(CoreLocation)
+import CoreLocation
+#endif
 import Contacts
 @preconcurrency import ContactsUI
 import EventKit
@@ -39,6 +42,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 #endif
 #if canImport(CoreMotion)
     private let motionManager = CMMotionManager()
+#endif
+#if canImport(CoreLocation)
+    private let locationManager = CLLocationManager()
 #endif
 
     private var settings = AppSettings.default
@@ -122,6 +128,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let zoomBadgeButton = UIButton(type: .system)
     private let fpsButton = UIButton(type: .system)
     private let nightButton = UIButton(type: .system)
+    private let locationButton = UIButton(type: .system)
     private let scannerButton = UIButton(type: .system)
     private let vaultButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
@@ -178,12 +185,18 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private var liveObjectDetection: ObjectDetectionSample?
     private var capturedObjectDetection: ObjectDetectionSample?
     private var liveFocusScore: Double = 0
+#if canImport(CoreLocation)
+    private var currentLocation: CLLocation?
+#endif
 
     override func viewDidLoad() {
         super.viewDidLoad()
         settings = settingsStore.load()
         vaultEntries = vaultStore.loadEntries()
         view.backgroundColor = .black
+#if canImport(CoreLocation)
+        configureLocationManager()
+#endif
         previewView.previewLayer.session = cameraService.session
         speechSynthesizer.delegate = self
         cameraService.onCodeScanned = { [weak self] code in
@@ -231,6 +244,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         stopRecordingTimer()
         speechSynthesizer.stopSpeaking(at: .immediate)
         stopMotionUpdates()
+#if canImport(CoreLocation)
+        locationManager.stopUpdatingLocation()
+#endif
     }
 
     override func viewDidLayoutSubviews() {
@@ -356,6 +372,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         configureZoomBadge()
         configureFPSButton()
         configureOverlayButton(nightButton, symbolName: "moon.fill", action: #selector(nightModeTapped), label: AppStrings.nightModeOff, title: AppStrings.night)
+        configureLocationButton()
         configureOverlayButton(scannerButton, symbolName: "qrcode.viewfinder", action: #selector(scannerTapped), label: AppStrings.scannerOff, title: AppStrings.scanner)
         configureOverlayButton(vaultButton, symbolName: "archivebox.fill", action: #selector(vaultTapped), label: AppStrings.scanVault, title: AppStrings.scanVault)
         configureOverlayButton(settingsButton, symbolName: "gearshape.fill", action: #selector(settingsTapped), label: AppStrings.settings, title: AppStrings.settings)
@@ -766,6 +783,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         fpsButton.alpha = cameraService.supports60FPS && !hasImage && !hasVideo ? 1.0 : 0.45
         nightButton.isEnabled = canInteractWithCamera && cameraService.supportsLowLightBoost
         nightButton.alpha = cameraService.supportsLowLightBoost && !hasImage && !hasVideo ? 1.0 : 0.45
+        locationButton.isEnabled = !hasImage && !hasVideo
+        locationButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
         whiteBalanceButton.isEnabled = canInteractWithCamera
         whiteBalanceButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
         autofocusButton.isEnabled = canInteractWithCamera && cameraService.supportsManualFocus
@@ -803,6 +822,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         updateZoomBadge()
         updateFPSButton()
         updateNightButton()
+        updateLocationButton()
         updateWhiteBalanceButton()
         updateAutofocusButton()
         updateLockButton()
@@ -917,6 +937,47 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         nightButton.configuration?.image = UIImage(systemName: symbol)
         nightButton.accessibilityLabel = isNightBoostEnabled ? AppStrings.nightModeOn : AppStrings.nightModeOff
         nightButton.tintColor = isNightBoostEnabled ? UIColor.systemTeal : .white
+    }
+
+    private func updateLocationButton() {
+#if canImport(CoreLocation)
+        let status = locationManager.authorizationStatus
+        let isEnabled = settings.locationMetadataEnabled
+        let hasFix = currentLocation != nil
+
+        let symbolName: String
+        let subtitle: String
+        let tintColor: UIColor
+
+        switch (isEnabled, status, hasFix) {
+        case (false, _, _):
+            symbolName = "location.slash"
+            subtitle = AppStrings.locationMetadataOff
+            tintColor = .white
+        case (true, .denied, _), (true, .restricted, _):
+            symbolName = "location.slash.fill"
+            subtitle = AppStrings.locationBlocked
+            tintColor = UIColor.systemRed
+        case (true, .authorizedAlways, true), (true, .authorizedWhenInUse, true):
+            symbolName = "location.fill"
+            subtitle = AppStrings.locationMetadataOn
+            tintColor = UIColor.systemGreen
+        default:
+            symbolName = "location"
+            subtitle = AppStrings.locationWaiting
+            tintColor = UIColor.systemOrange
+        }
+
+        locationButton.configuration?.image = UIImage(systemName: symbolName)
+        locationButton.configuration?.subtitle = subtitle
+        locationButton.accessibilityLabel = AppStrings.locationMetadata
+        locationButton.tintColor = tintColor
+#else
+        locationButton.configuration?.image = UIImage(systemName: "location.slash")
+        locationButton.configuration?.subtitle = AppStrings.locationMetadataOff
+        locationButton.accessibilityLabel = AppStrings.locationMetadata
+        locationButton.tintColor = .white
+#endif
     }
 
     private func updateWhiteBalanceButton() {
@@ -1119,7 +1180,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private func toolButtons(for section: ToolsSection) -> [UIButton] {
         switch section {
         case .quick:
-            return [flipButton, flashButton, zoomBadgeButton, fpsButton, nightButton, vaultButton, settingsButton]
+            return [flipButton, flashButton, zoomBadgeButton, fpsButton, nightButton, locationButton, vaultButton, settingsButton]
         case .detect:
             return [scannerButton, ocrButton, documentButton, mlButton, objectButton]
         case .pro:
@@ -1295,8 +1356,16 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         if isScannerEnabled {
             return "\(AppStrings.scannerAimHint) • \(preferredFPS) \(AppStrings.fps)"
         }
-        let swipeHint = isToolsPanelExpanded ? " • \(AppStrings.swipeTuningCompactHint)" : ""
-        return "\(compactPreviewSummary())\(swipeHint)"
+        var parts = [compactPreviewSummary()]
+#if canImport(CoreLocation)
+        if let locationHint = locationPreviewHint() {
+            parts.append(locationHint)
+        }
+#endif
+        if isToolsPanelExpanded {
+            parts.append(AppStrings.swipeTuningCompactHint)
+        }
+        return parts.joined(separator: " • ")
     }
 
     private func formatted(analysis: CameraAnalysis) -> String {
@@ -1392,6 +1461,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         } catch {
             cameraService.lastError = error.localizedDescription
         }
+#if canImport(CoreLocation)
+        syncLocationTracking(forceRequest: settings.locationMetadataEnabled)
+#endif
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         Task { [weak self] in
             guard let self else { return }
@@ -1416,6 +1488,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         isObjectDetectionEnabled = cameraService.isObjectDetectionEnabled
         isTorchEnabled = cameraService.isTorchEnabled
         isFocusExposureLocked = cameraService.isFocusExposureLocked
+#if canImport(CoreLocation)
+        syncLocationTracking(forceRequest: false)
+#endif
         settings.exposureBias = Double(cameraService.currentExposureBias)
         settings.shutterDurationSeconds = cameraService.currentShutterDurationSeconds
         settings.whiteBalancePreset = cameraService.currentWhiteBalancePreset
@@ -1424,6 +1499,52 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         updateScannerRectOfInterest()
         refreshUI()
     }
+
+#if canImport(CoreLocation)
+    private func configureLocationManager() {
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        locationManager.distanceFilter = 10
+        locationManager.pausesLocationUpdatesAutomatically = true
+    }
+
+    private func syncLocationTracking(forceRequest: Bool) {
+        guard settings.locationMetadataEnabled else {
+            locationManager.stopUpdatingLocation()
+            currentLocation = nil
+            return
+        }
+
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            locationManager.startUpdatingLocation()
+            locationManager.requestLocation()
+        case .notDetermined:
+            if forceRequest {
+                locationManager.requestWhenInUseAuthorization()
+            }
+        case .denied, .restricted:
+            locationManager.stopUpdatingLocation()
+        @unknown default:
+            locationManager.stopUpdatingLocation()
+        }
+    }
+
+    private func locationPreviewHint() -> String? {
+        guard settings.locationMetadataEnabled else { return nil }
+
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            return currentLocation == nil ? AppStrings.locationWaiting : AppStrings.locationMetadataOn
+        case .denied, .restricted:
+            return AppStrings.locationBlocked
+        case .notDetermined:
+            return AppStrings.locationWaiting
+        @unknown default:
+            return nil
+        }
+    }
+#endif
 
     private func presentSettings() {
         let isoUpperBound = max(cameraService.maxISOValue, Float(1600))
@@ -1746,6 +1867,26 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             refreshUI()
         }
+    }
+
+    @objc
+    private func locationTapped() {
+#if canImport(CoreLocation)
+        settings.locationMetadataEnabled.toggle()
+        try? settingsStore.save(settings)
+        syncLocationTracking(forceRequest: settings.locationMetadataEnabled)
+        if settings.locationMetadataEnabled,
+           case .denied = locationManager.authorizationStatus {
+            cameraService.lastError = AppStrings.locationPermissionDenied
+        } else if settings.locationMetadataEnabled,
+                  case .restricted = locationManager.authorizationStatus {
+            cameraService.lastError = AppStrings.locationPermissionDenied
+        } else {
+            cameraService.lastError = nil
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        refreshUI()
+#endif
     }
 
     @objc
@@ -2181,7 +2322,15 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
         do {
             let data = try await cameraService.capturePhoto(flashEnabled: isFlashEnabled)
-            latestImageData = applyDocumentCorrectionIfNeeded(to: data) ?? data
+            let processedImageData = applyDocumentCorrectionIfNeeded(to: data) ?? data
+#if canImport(CoreLocation)
+            latestImageData = CameraService.imageDataByEmbeddingLocationMetadata(
+                processedImageData,
+                location: settings.locationMetadataEnabled ? currentLocation : nil
+            )
+#else
+            latestImageData = processedImageData
+#endif
             latestAnalysis = nil
             refreshRenderedImagePreviewIfNeeded()
             if (settings.analysisMode == .text || isDocumentModeEnabled),
@@ -3168,6 +3317,23 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         applyToolTileStyle(fpsButton)
     }
 
+    private func configureLocationButton() {
+        locationButton.translatesAutoresizingMaskIntoConstraints = false
+        var configuration = UIButton.Configuration.plain()
+        configuration.title = "GPS"
+        configuration.subtitle = AppStrings.locationMetadataOff
+        configuration.image = UIImage(systemName: "location")
+        configuration.imagePlacement = .top
+        configuration.imagePadding = 4
+        configuration.titleAlignment = .center
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
+        configuration.baseForegroundColor = .white
+        locationButton.configuration = configuration
+        locationButton.addTarget(self, action: #selector(locationTapped), for: .touchUpInside)
+        installPressAnimation(on: locationButton)
+        applyToolTileStyle(locationButton)
+    }
+
     private func configureBrandLinkButton() {
         brandLinkButton.translatesAutoresizingMaskIntoConstraints = false
         var configuration = UIButton.Configuration.plain()
@@ -3966,7 +4132,40 @@ extension CameraViewController: CNContactViewControllerDelegate, EKEventEditView
     }
 }
 
-extension CameraViewController: @preconcurrency AVSpeechSynthesizerDelegate {
+#if canImport(CoreLocation)
+extension CameraViewController: CLLocationManagerDelegate {
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        Task { @MainActor in
+            if status == .authorizedAlways || status == .authorizedWhenInUse {
+                self.syncLocationTracking(forceRequest: false)
+            } else if status == .denied || status == .restricted {
+                self.currentLocation = nil
+                self.refreshUI()
+            }
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        Task { @MainActor in
+            self.currentLocation = location
+            self.refreshUI()
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let nsError = error as NSError
+        guard nsError.domain != kCLErrorDomain || nsError.code != CLError.locationUnknown.rawValue else { return }
+        Task { @MainActor in
+            self.cameraService.lastError = error.localizedDescription
+            self.refreshUI()
+        }
+    }
+}
+#endif
+
+extension CameraViewController: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
             self.isSpeakingResult = false

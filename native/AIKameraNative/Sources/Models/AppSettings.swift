@@ -39,6 +39,7 @@ struct AppSettings: Equatable, Codable {
     var apiKey: String
     var model: String
     var autoAnalyze: Bool
+    var locationMetadataEnabled: Bool
     var analysisMode: AnalysisMode
     var exposureBias: Double
     var shutterDurationSeconds: Double
@@ -52,6 +53,7 @@ struct AppSettings: Equatable, Codable {
         case apiKey
         case model
         case autoAnalyze
+        case locationMetadataEnabled
         case analysisMode
         case exposureBias
         case shutterDurationSeconds
@@ -66,6 +68,7 @@ struct AppSettings: Equatable, Codable {
         apiKey: String,
         model: String,
         autoAnalyze: Bool,
+        locationMetadataEnabled: Bool,
         analysisMode: AnalysisMode,
         exposureBias: Double,
         shutterDurationSeconds: Double,
@@ -78,6 +81,7 @@ struct AppSettings: Equatable, Codable {
         self.apiKey = apiKey
         self.model = model
         self.autoAnalyze = autoAnalyze
+        self.locationMetadataEnabled = locationMetadataEnabled
         self.analysisMode = analysisMode
         self.exposureBias = exposureBias
         self.shutterDurationSeconds = shutterDurationSeconds
@@ -93,6 +97,7 @@ struct AppSettings: Equatable, Codable {
         apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? "gpt-5.4"
         autoAnalyze = try container.decodeIfPresent(Bool.self, forKey: .autoAnalyze) ?? false
+        locationMetadataEnabled = try container.decodeIfPresent(Bool.self, forKey: .locationMetadataEnabled) ?? false
         analysisMode = try container.decodeIfPresent(AnalysisMode.self, forKey: .analysisMode) ?? .scene
         exposureBias = try container.decodeIfPresent(Double.self, forKey: .exposureBias) ?? 0
         shutterDurationSeconds = try container.decodeIfPresent(Double.self, forKey: .shutterDurationSeconds) ?? 0
@@ -107,6 +112,7 @@ struct AppSettings: Equatable, Codable {
         apiKey: "",
         model: "gpt-5.4",
         autoAnalyze: false,
+        locationMetadataEnabled: false,
         analysisMode: .scene,
         exposureBias: 0,
         shutterDurationSeconds: 0,

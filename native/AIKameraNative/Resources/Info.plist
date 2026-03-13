@@ -34,6 +34,8 @@
   <string>ToPwnZ - native ai cam potřebuje přístup ke kameře pro focení a analýzu snímků.</string>
   <key>NSContactsUsageDescription</key>
   <string>ToPwnZ - native ai cam může uložit naskenovaný kontakt přímo do kontaktů.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>ToPwnZ - native ai cam může ukládat GPS metadata do pořízených fotek.</string>
   <key>NSCalendarsUsageDescription</key>
   <string>ToPwnZ - native ai cam může vytvořit událost z naskenovaného kalendářového kódu.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>

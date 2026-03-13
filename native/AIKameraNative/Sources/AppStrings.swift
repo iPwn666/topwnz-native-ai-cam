@@ -47,6 +47,13 @@ enum AppStrings {
     static var scannerOn: String { isCzech ? "Scanner zap" : "Scanner on" }
     static var scannerOff: String { isCzech ? "Scanner vyp" : "Scanner off" }
     static var scanner: String { isCzech ? "Sken" : "Scan" }
+    static var locationMetadata: String { isCzech ? "GPS tagy" : "GPS tags" }
+    static var locationMetadataOn: String { isCzech ? "GPS tagy zap" : "GPS tags on" }
+    static var locationMetadataOff: String { isCzech ? "GPS tagy vyp" : "GPS tags off" }
+    static var locationWaiting: String { isCzech ? "Čekám na polohu" : "Waiting for location" }
+    static var locationBlocked: String { isCzech ? "Poloha blokována" : "Location blocked" }
+    static var locationPermissionDenied: String { isCzech ? "Přístup k poloze je zamítnutý." : "Location access is denied." }
+    static var locationHint: String { isCzech ? "Do fotek se uloží GPS metadata." : "GPS metadata will be embedded into photos." }
     static var liveOCR: String { isCzech ? "Live OCR" : "Live OCR" }
     static var liveOCRReady: String { isCzech ? "OCR aktivní" : "OCR ready" }
     static var liveOCRHint: String { isCzech ? "Klepni na textový blok pro výběr." : "Tap a text block to select it." }
@@ -100,6 +107,7 @@ enum AppStrings {
     static var eventNotes: String { isCzech ? "Poznámky" : "Notes" }
     static var locationCoordinates: String { isCzech ? "Souřadnice" : "Coordinates" }
     static var autoAnalyze: String { isCzech ? "Auto AI po focení" : "Auto AI after capture" }
+    static var locationForCaptures: String { isCzech ? "GPS metadata do fotek" : "GPS metadata in photos" }
     static var permissionTitle: String { isCzech ? "Povol kameru" : "Allow camera access" }
     static var permissionBody: String {
         isCzech
@@ -157,7 +165,7 @@ enum AppStrings {
     static var toolsQuick: String { isCzech ? "Rychlé" : "Quick" }
     static var toolsDetect: String { isCzech ? "Detekce" : "Detect" }
     static var toolsPro: String { isCzech ? "Pro" : "Pro" }
-    static var toolsQuickHint: String { isCzech ? "Kamera, světlo, FPS a přístup." : "Camera, light, FPS, and access." }
+    static var toolsQuickHint: String { isCzech ? "Kamera, světlo, FPS, GPS a přístup." : "Camera, light, FPS, GPS, and access." }
     static var toolsDetectHint: String { isCzech ? "Scanner, OCR, dokumenty a on-device AI." : "Scanner, OCR, documents, and on-device AI." }
     static var toolsProHint: String { isCzech ? "WB, AF, lock a ruční kontrola obrazu." : "WB, AF, lock, and manual image control." }
     static var resetPro: String { isCzech ? "Reset" : "Reset" }

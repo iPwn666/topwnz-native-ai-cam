@@ -3,6 +3,9 @@
 #if canImport(CoreML)
 import CoreML
 #endif
+#if canImport(CoreLocation)
+import CoreLocation
+#endif
 import Foundation
 import ImageIO
 import Vision
@@ -2082,7 +2085,7 @@ final class CameraService: NSObject, @unchecked Sendable {
               !isProcessingObjectDetection else { return }
 
         let uptime = ProcessInfo.processInfo.systemUptime
-        guard uptime - lastObjectDetectionUptime >= 0.55 else { return }
+        guard uptime - lastObjectDetectionUptime >= 0.85 else { return }
         lastObjectDetectionUptime = uptime
         isProcessingObjectDetection = true
 
@@ -2150,7 +2153,7 @@ final class CameraService: NSObject, @unchecked Sendable {
             let observations = (request.results as? [VNRecognizedObjectObservation]) ?? []
             resultHandler(observations)
         }
-        request.imageCropAndScaleOption = .scaleFill
+        request.imageCropAndScaleOption = .scaleFit
         return request
 #else
         return nil
@@ -2283,12 +2286,304 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private static func humanizedClassificationTitle(_ raw: String) -> String {
-        raw
+        let normalized = raw
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .capitalized
+
+        guard AppStrings.isCzech else {
+            return normalized.capitalized(with: Locale.current)
+        }
+
+        let candidates = normalized
+            .lowercased()
+            .components(separatedBy: CharacterSet(charactersIn: ",;/"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        for candidate in candidates {
+            if let translated = localizedMLPhraseMap[candidate] {
+                return translated
+            }
+        }
+
+        let primary = candidates.first ?? normalized.lowercased()
+        let translated = localizedMLWords(in: primary)
+        return translated.isEmpty ? normalized.capitalized(with: Locale(identifier: "cs_CZ")) : translated
     }
+
+    private static func localizedMLWords(in raw: String) -> String {
+        let tokens = raw
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+
+        guard !tokens.isEmpty else { return "" }
+
+        var changed = false
+        let mapped = tokens.map { token -> String in
+            let lowercased = token.lowercased()
+            if let translated = localizedMLWordMap[lowercased] {
+                changed = true
+                return translated
+            }
+            return lowercased
+        }
+
+        guard changed else { return "" }
+
+        let sentence = mapped.joined(separator: " ")
+        let firstCharacter = String(sentence.prefix(1)).uppercased(with: Locale(identifier: "cs_CZ"))
+        return firstCharacter + String(sentence.dropFirst())
+    }
+
+    private static let localizedMLPhraseMap: [String: String] = [
+        "person": "Osoba",
+        "bicycle": "Kolo",
+        "car": "Auto",
+        "motorcycle": "Motorka",
+        "motorbike": "Motorka",
+        "airplane": "Letadlo",
+        "aeroplane": "Letadlo",
+        "bus": "Autobus",
+        "train": "Vlak",
+        "truck": "Nákladní auto",
+        "boat": "Loď",
+        "traffic light": "Semafor",
+        "fire hydrant": "Hydrant",
+        "stop sign": "Stopka",
+        "parking meter": "Parkovací automat",
+        "bench": "Lavička",
+        "bird": "Pták",
+        "cat": "Kočka",
+        "dog": "Pes",
+        "horse": "Kůň",
+        "sheep": "Ovce",
+        "cow": "Kráva",
+        "elephant": "Slon",
+        "bear": "Medvěd",
+        "zebra": "Zebra",
+        "giraffe": "Žirafa",
+        "backpack": "Batoh",
+        "umbrella": "Deštník",
+        "handbag": "Kabelka",
+        "tie": "Kravata",
+        "suitcase": "Kufr",
+        "frisbee": "Frisbee",
+        "skis": "Lyže",
+        "snowboard": "Snowboard",
+        "sports ball": "Míč",
+        "kite": "Drak",
+        "baseball bat": "Baseballová pálka",
+        "baseball glove": "Baseballová rukavice",
+        "skateboard": "Skateboard",
+        "surfboard": "Surf",
+        "tennis racket": "Tenisová raketa",
+        "bottle": "Lahev",
+        "wine glass": "Sklenice na víno",
+        "cup": "Hrnek",
+        "fork": "Vidlička",
+        "knife": "Nůž",
+        "spoon": "Lžíce",
+        "bowl": "Miska",
+        "banana": "Banán",
+        "apple": "Jablko",
+        "sandwich": "Sendvič",
+        "orange": "Pomeranč",
+        "broccoli": "Brokolice",
+        "carrot": "Mrkev",
+        "hot dog": "Párek v rohlíku",
+        "pizza": "Pizza",
+        "donut": "Kobliha",
+        "cake": "Dort",
+        "chair": "Židle",
+        "couch": "Pohovka",
+        "sofa": "Pohovka",
+        "potted plant": "Květina v květináči",
+        "bed": "Postel",
+        "dining table": "Jídelní stůl",
+        "toilet": "Toaleta",
+        "tv": "Televize",
+        "tv monitor": "Televize",
+        "laptop": "Notebook",
+        "mouse": "Myš",
+        "remote": "Dálkový ovladač",
+        "keyboard": "Klávesnice",
+        "cell phone": "Mobil",
+        "cellphone": "Mobil",
+        "mobile phone": "Mobil",
+        "smartphone": "Chytrý telefon",
+        "microwave": "Mikrovlnka",
+        "oven": "Trouba",
+        "toaster": "Toustovač",
+        "sink": "Dřez",
+        "refrigerator": "Lednice",
+        "book": "Kniha",
+        "clock": "Hodiny",
+        "vase": "Váza",
+        "scissors": "Nůžky",
+        "teddy bear": "Plyšový medvěd",
+        "hair drier": "Fén",
+        "hair dryer": "Fén",
+        "toothbrush": "Zubní kartáček",
+        "tabby": "Mourovatá kočka",
+        "tabby cat": "Mourovatá kočka",
+        "siamese cat": "Siamská kočka",
+        "persian cat": "Perská kočka",
+        "kitten": "Kotě",
+        "puppy": "Štěně",
+        "golden retriever": "Zlatý retrívr",
+        "labrador retriever": "Labradorský retrívr",
+        "german shepherd": "Německý ovčák",
+        "coffee mug": "Hrnek na kávu",
+        "water bottle": "Láhev na vodu",
+        "monitor": "Monitor",
+        "screen": "Obrazovka",
+        "document": "Dokument",
+        "paper": "Papír",
+        "text": "Text",
+        "barcode": "Čárový kód",
+        "qr code": "QR kód"
+    ]
+
+    private static let localizedMLWordMap: [String: String] = [
+        "cat": "kočka",
+        "dog": "pes",
+        "bird": "pták",
+        "horse": "kůň",
+        "sheep": "ovce",
+        "cow": "kráva",
+        "bear": "medvěd",
+        "zebra": "zebra",
+        "giraffe": "žirafa",
+        "person": "osoba",
+        "people": "lidé",
+        "man": "muž",
+        "woman": "žena",
+        "child": "dítě",
+        "car": "auto",
+        "truck": "nákladní auto",
+        "bus": "autobus",
+        "train": "vlak",
+        "boat": "loď",
+        "airplane": "letadlo",
+        "motorcycle": "motorka",
+        "bicycle": "kolo",
+        "bike": "kolo",
+        "phone": "telefon",
+        "mobile": "mobil",
+        "cellular": "mobilní",
+        "smartphone": "chytrý telefon",
+        "laptop": "notebook",
+        "computer": "počítač",
+        "keyboard": "klávesnice",
+        "mouse": "myš",
+        "remote": "ovladač",
+        "monitor": "monitor",
+        "screen": "obrazovka",
+        "book": "kniha",
+        "bottle": "lahev",
+        "cup": "hrnek",
+        "glass": "sklenice",
+        "chair": "židle",
+        "table": "stůl",
+        "desk": "stůl",
+        "couch": "pohovka",
+        "sofa": "pohovka",
+        "bed": "postel",
+        "plant": "rostlina",
+        "flower": "květina",
+        "food": "jídlo",
+        "banana": "banán",
+        "apple": "jablko",
+        "orange": "pomeranč",
+        "pizza": "pizza",
+        "sandwich": "sendvič",
+        "cake": "dort",
+        "donut": "kobliha",
+        "broccoli": "brokolice",
+        "carrot": "mrkev",
+        "document": "dokument",
+        "paper": "papír",
+        "text": "text",
+        "barcode": "čárový kód",
+        "code": "kód",
+        "qr": "QR",
+        "sign": "značka",
+        "light": "světlo",
+        "clock": "hodiny",
+        "watch": "hodinky",
+        "red": "červený",
+        "green": "zelený",
+        "blue": "modrý",
+        "yellow": "žlutý",
+        "black": "černý",
+        "white": "bílý",
+        "brown": "hnědý",
+        "golden": "zlatý",
+        "tabby": "mourovatý",
+        "retriever": "retrívr",
+        "shepherd": "ovčák",
+        "terrier": "teriér"
+    ]
+
+#if canImport(CoreLocation)
+    static func imageDataByEmbeddingLocationMetadata(_ imageData: Data, location: CLLocation?) -> Data {
+        guard let location,
+              let source = CGImageSourceCreateWithData(imageData as CFData, nil),
+              let sourceType = CGImageSourceGetType(source),
+              let destinationBuffer = NSMutableData() as CFMutableData?,
+              let destination = CGImageDestinationCreateWithData(destinationBuffer, sourceType, 1, nil) else {
+            return imageData
+        }
+
+        var properties = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]) ?? [:]
+        properties[kCGImagePropertyGPSDictionary] = gpsMetadataDictionary(for: location)
+
+        CGImageDestinationAddImageFromSource(destination, source, 0, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            return imageData
+        }
+
+        return destinationBuffer as Data
+    }
+
+    private static func gpsMetadataDictionary(for location: CLLocation) -> [CFString: Any] {
+        let coordinate = location.coordinate
+
+        let timestamp = location.timestamp
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        dateFormatter.dateFormat = "yyyy:MM:dd"
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+        timeFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        timeFormatter.dateFormat = "HH:mm:ss.SSSSSS"
+
+        var gps: [CFString: Any] = [
+            kCGImagePropertyGPSLatitudeRef: coordinate.latitude >= 0 ? "N" : "S",
+            kCGImagePropertyGPSLatitude: abs(coordinate.latitude),
+            kCGImagePropertyGPSLongitudeRef: coordinate.longitude >= 0 ? "E" : "W",
+            kCGImagePropertyGPSLongitude: abs(coordinate.longitude),
+            kCGImagePropertyGPSDateStamp: dateFormatter.string(from: timestamp),
+            kCGImagePropertyGPSTimeStamp: timeFormatter.string(from: timestamp),
+            kCGImagePropertyGPSMapDatum: "WGS-84",
+            kCGImagePropertyGPSVersion: "2.3.0.0"
+        ]
+
+        if location.horizontalAccuracy >= 0 {
+            gps[kCGImagePropertyGPSDOP] = location.horizontalAccuracy
+        }
+
+        if location.verticalAccuracy >= 0 {
+            gps[kCGImagePropertyGPSAltitudeRef] = location.altitude < 0 ? 1 : 0
+            gps[kCGImagePropertyGPSAltitude] = abs(location.altitude)
+        }
+
+        return gps
+    }
+#endif
 }
 
 extension CameraService: AVCapturePhotoCaptureDelegate {
