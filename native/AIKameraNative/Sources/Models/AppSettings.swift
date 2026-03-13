@@ -33,6 +33,17 @@ enum FocusModePreset: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+enum FrameProcessorProfile: String, CaseIterable, Identifiable, Codable {
+    case off
+    case balanced
+    case documents
+    case detection
+    case full
+    case custom
+
+    var id: String { rawValue }
+}
+
 struct AppSettings: Equatable, Codable {
     static let shutterPresets: [Double] = [0, 1.0 / 1000.0, 1.0 / 500.0, 1.0 / 250.0, 1.0 / 125.0, 1.0 / 60.0, 1.0 / 30.0, 1.0 / 15.0, 1.0 / 8.0, 1.0 / 4.0, 1.0 / 2.0, 1.0]
 
@@ -40,6 +51,8 @@ struct AppSettings: Equatable, Codable {
     var model: String
     var autoAnalyze: Bool
     var locationMetadataEnabled: Bool
+    var frameProcessorProfile: FrameProcessorProfile
+    var frameProcessorTargetFPS: Int
     var analysisMode: AnalysisMode
     var exposureBias: Double
     var shutterDurationSeconds: Double
@@ -54,6 +67,8 @@ struct AppSettings: Equatable, Codable {
         case model
         case autoAnalyze
         case locationMetadataEnabled
+        case frameProcessorProfile
+        case frameProcessorTargetFPS
         case analysisMode
         case exposureBias
         case shutterDurationSeconds
@@ -69,6 +84,8 @@ struct AppSettings: Equatable, Codable {
         model: String,
         autoAnalyze: Bool,
         locationMetadataEnabled: Bool,
+        frameProcessorProfile: FrameProcessorProfile,
+        frameProcessorTargetFPS: Int,
         analysisMode: AnalysisMode,
         exposureBias: Double,
         shutterDurationSeconds: Double,
@@ -82,6 +99,8 @@ struct AppSettings: Equatable, Codable {
         self.model = model
         self.autoAnalyze = autoAnalyze
         self.locationMetadataEnabled = locationMetadataEnabled
+        self.frameProcessorProfile = frameProcessorProfile
+        self.frameProcessorTargetFPS = frameProcessorTargetFPS
         self.analysisMode = analysisMode
         self.exposureBias = exposureBias
         self.shutterDurationSeconds = shutterDurationSeconds
@@ -98,6 +117,8 @@ struct AppSettings: Equatable, Codable {
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? "gpt-5.4"
         autoAnalyze = try container.decodeIfPresent(Bool.self, forKey: .autoAnalyze) ?? false
         locationMetadataEnabled = try container.decodeIfPresent(Bool.self, forKey: .locationMetadataEnabled) ?? false
+        frameProcessorProfile = try container.decodeIfPresent(FrameProcessorProfile.self, forKey: .frameProcessorProfile) ?? .off
+        frameProcessorTargetFPS = try container.decodeIfPresent(Int.self, forKey: .frameProcessorTargetFPS) ?? 10
         analysisMode = try container.decodeIfPresent(AnalysisMode.self, forKey: .analysisMode) ?? .scene
         exposureBias = try container.decodeIfPresent(Double.self, forKey: .exposureBias) ?? 0
         shutterDurationSeconds = try container.decodeIfPresent(Double.self, forKey: .shutterDurationSeconds) ?? 0
@@ -113,6 +134,8 @@ struct AppSettings: Equatable, Codable {
         model: "gpt-5.4",
         autoAnalyze: false,
         locationMetadataEnabled: false,
+        frameProcessorProfile: .off,
+        frameProcessorTargetFPS: 10,
         analysisMode: .scene,
         exposureBias: 0,
         shutterDurationSeconds: 0,

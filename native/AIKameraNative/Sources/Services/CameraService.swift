@@ -680,6 +680,7 @@ final class CameraService: NSObject, @unchecked Sendable {
     private var manualFocusPosition: Float = 0.5
     private var focusExposureLockEnabled = false
     private var torchEnabled = false
+    private var frameProcessorTargetFPS = 10
     private var scannerEnabled = false
     private var textRecognitionEnabled = false
     private var documentDetectionEnabled = false
@@ -725,6 +726,7 @@ final class CameraService: NSObject, @unchecked Sendable {
     var supportsManualFocus: Bool { videoInput?.device.isLockingFocusWithCustomLensPositionSupported == true }
     var isTorchEnabled: Bool { torchEnabled }
     var isRecordingVideo: Bool { movieOutput.isRecording }
+    var currentFrameProcessorTargetFPS: Int { frameProcessorTargetFPS }
     var isScannerEnabled: Bool { scannerEnabled }
     var isTextRecognitionEnabled: Bool { textRecognitionEnabled }
     var isDocumentDetectionEnabled: Bool { documentDetectionEnabled }
@@ -1347,110 +1349,40 @@ final class CameraService: NSObject, @unchecked Sendable {
         }
     }
 
-    func setTextRecognitionEnabled(_ enabled: Bool) async -> Bool {
+    func setFrameProcessorTargetFPS(_ value: Int) async -> Int {
         await withCheckedContinuation { continuation in
             sessionQueue.async {
-                self.textRecognitionEnabled = enabled
-                self.isProcessingTextRecognition = false
-                self.lastTextRecognitionUptime = 0
-                if enabled {
-                    self.scannerEnabled = false
-                    self.documentDetectionEnabled = false
-                    self.mlClassificationEnabled = false
-                    self.objectDetectionEnabled = false
-                    self.configureMetadataTypes()
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onDetectedDocument?(nil)
-                        self?.onImageClassification?(nil)
-                        self?.onDetectedObjects?(nil)
-                    }
-                } else {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(.empty)
-                    }
-                }
-                self.lastError = nil
-                continuation.resume(returning: self.textRecognitionEnabled)
+                self.frameProcessorTargetFPS = max(5, min(value, 15))
+                continuation.resume(returning: self.frameProcessorTargetFPS)
             }
         }
     }
 
-    func setDocumentDetectionEnabled(_ enabled: Bool) async -> Bool {
-        await withCheckedContinuation { continuation in
-            sessionQueue.async {
-                self.documentDetectionEnabled = enabled
-                self.isProcessingDocumentDetection = false
-                self.lastDocumentDetectionUptime = 0
-                if enabled {
-                    self.scannerEnabled = false
-                    self.textRecognitionEnabled = false
-                    self.mlClassificationEnabled = false
-                    self.objectDetectionEnabled = false
-                    self.configureMetadataTypes()
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(.empty)
-                        self?.onImageClassification?(nil)
-                        self?.onDetectedObjects?(nil)
-                    }
-                }
-                if !enabled {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onDetectedDocument?(nil)
-                    }
-                }
-                self.lastError = nil
-                continuation.resume(returning: self.documentDetectionEnabled)
-            }
-        }
-    }
-
-    func setMLClassificationEnabled(_ enabled: Bool) async -> Bool {
-        if enabled {
+    func configureFrameProcessing(
+        textEnabled: Bool,
+        documentEnabled: Bool,
+        mlClassificationEnabled: Bool,
+        objectDetectionEnabled: Bool,
+        targetFPS: Int
+    ) async -> (Bool, Bool, Bool, Bool, Int) {
+        if mlClassificationEnabled {
 #if canImport(CoreML)
             do {
                 try await prepareDownloadedMLClassifierIfNeeded()
-                Task(priority: .utility) { [weak self] in
-                    guard let self else { return }
-                    try? await self.prepareDownloadedObjectDetectorIfNeeded()
+                if objectDetectionEnabled {
+                    try await prepareDownloadedObjectDetectorIfNeeded()
+                } else {
+                    Task(priority: .utility) { [weak self] in
+                        guard let self else { return }
+                        try? await self.prepareDownloadedObjectDetectorIfNeeded()
+                    }
                 }
             } catch {
                 lastError = error.localizedDescription
-                return false
+                return (self.textRecognitionEnabled, self.documentDetectionEnabled, self.mlClassificationEnabled, self.objectDetectionEnabled, self.frameProcessorTargetFPS)
             }
 #endif
-        }
-
-        return await withCheckedContinuation { continuation in
-            sessionQueue.async {
-                self.mlClassificationEnabled = enabled
-                self.isProcessingMLClassification = false
-                self.lastMLClassificationUptime = 0
-                self.classificationHistory.removeAll()
-                if enabled {
-                    self.scannerEnabled = false
-                    self.textRecognitionEnabled = false
-                    self.documentDetectionEnabled = false
-                    self.objectDetectionEnabled = false
-                    self.objectDetectionHistory.removeAll()
-                    self.configureMetadataTypes()
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(.empty)
-                        self?.onDetectedDocument?(nil)
-                        self?.onDetectedObjects?(nil)
-                    }
-                } else {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onImageClassification?(nil)
-                    }
-                }
-                self.lastError = nil
-                continuation.resume(returning: self.mlClassificationEnabled)
-            }
-        }
-    }
-
-    func setObjectDetectionEnabled(_ enabled: Bool) async -> Bool {
-        if enabled {
+        } else if objectDetectionEnabled {
 #if canImport(CoreML)
             do {
                 try await prepareDownloadedObjectDetectorIfNeeded()
@@ -1460,38 +1392,102 @@ final class CameraService: NSObject, @unchecked Sendable {
                 }
             } catch {
                 lastError = error.localizedDescription
-                return false
+                return (self.textRecognitionEnabled, self.documentDetectionEnabled, self.mlClassificationEnabled, self.objectDetectionEnabled, self.frameProcessorTargetFPS)
             }
 #endif
         }
 
         return await withCheckedContinuation { continuation in
             sessionQueue.async {
-                self.objectDetectionEnabled = enabled
+                self.frameProcessorTargetFPS = max(5, min(targetFPS, 15))
+                self.scannerEnabled = false
+                self.textRecognitionEnabled = textEnabled
+                self.documentDetectionEnabled = documentEnabled
+                self.mlClassificationEnabled = mlClassificationEnabled
+                self.objectDetectionEnabled = objectDetectionEnabled
+
+                self.isProcessingTextRecognition = false
+                self.isProcessingDocumentDetection = false
+                self.isProcessingMLClassification = false
                 self.isProcessingObjectDetection = false
+                self.lastTextRecognitionUptime = 0
+                self.lastDocumentDetectionUptime = 0
+                self.lastMLClassificationUptime = 0
                 self.lastObjectDetectionUptime = 0
+                self.classificationHistory.removeAll()
                 self.objectDetectionHistory.removeAll()
-                if enabled {
-                    self.scannerEnabled = false
-                    self.textRecognitionEnabled = false
-                    self.documentDetectionEnabled = false
-                    self.mlClassificationEnabled = false
-                    self.classificationHistory.removeAll()
-                    self.configureMetadataTypes()
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onRecognizedText?(.empty)
-                        self?.onDetectedDocument?(nil)
-                        self?.onImageClassification?(nil)
+                self.configureMetadataTypes()
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    if !textEnabled {
+                        self.onRecognizedText?(.empty)
                     }
-                } else {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onDetectedObjects?(nil)
+                    if !documentEnabled {
+                        self.onDetectedDocument?(nil)
+                    }
+                    if !mlClassificationEnabled {
+                        self.onImageClassification?(nil)
+                    }
+                    if !objectDetectionEnabled {
+                        self.onDetectedObjects?(nil)
                     }
                 }
+
                 self.lastError = nil
-                continuation.resume(returning: self.objectDetectionEnabled)
+                continuation.resume(returning: (
+                    self.textRecognitionEnabled,
+                    self.documentDetectionEnabled,
+                    self.mlClassificationEnabled,
+                    self.objectDetectionEnabled,
+                    self.frameProcessorTargetFPS
+                ))
             }
         }
+    }
+
+    func setTextRecognitionEnabled(_ enabled: Bool) async -> Bool {
+        let state = await configureFrameProcessing(
+            textEnabled: enabled,
+            documentEnabled: documentDetectionEnabled,
+            mlClassificationEnabled: mlClassificationEnabled,
+            objectDetectionEnabled: objectDetectionEnabled,
+            targetFPS: frameProcessorTargetFPS
+        )
+        return state.0
+    }
+
+    func setDocumentDetectionEnabled(_ enabled: Bool) async -> Bool {
+        let state = await configureFrameProcessing(
+            textEnabled: textRecognitionEnabled,
+            documentEnabled: enabled,
+            mlClassificationEnabled: mlClassificationEnabled,
+            objectDetectionEnabled: objectDetectionEnabled,
+            targetFPS: frameProcessorTargetFPS
+        )
+        return state.1
+    }
+
+    func setMLClassificationEnabled(_ enabled: Bool) async -> Bool {
+        let state = await configureFrameProcessing(
+            textEnabled: textRecognitionEnabled,
+            documentEnabled: documentDetectionEnabled,
+            mlClassificationEnabled: enabled,
+            objectDetectionEnabled: objectDetectionEnabled,
+            targetFPS: frameProcessorTargetFPS
+        )
+        return state.2
+    }
+
+    func setObjectDetectionEnabled(_ enabled: Bool) async -> Bool {
+        let state = await configureFrameProcessing(
+            textEnabled: textRecognitionEnabled,
+            documentEnabled: documentDetectionEnabled,
+            mlClassificationEnabled: mlClassificationEnabled,
+            objectDetectionEnabled: enabled,
+            targetFPS: frameProcessorTargetFPS
+        )
+        return state.3
     }
 
     func recognizeText(in imageData: Data) async -> TextRecognitionSample? {
@@ -1561,16 +1557,26 @@ final class CameraService: NSObject, @unchecked Sendable {
     func detectObjects(in imageData: Data) async -> ObjectDetectionSample? {
         return await withCheckedContinuation { continuation in
             sessionQueue.async {
-                guard let request = self.makeObjectDetectionRequest(resultHandler: { observations in
-                    continuation.resume(returning: Self.objectDetectionSample(from: observations))
+                var objectObservations: [VNRecognizedObjectObservation] = []
+                guard let objectRequest = self.makeObjectDetectionRequest(resultHandler: { observations in
+                    objectObservations = observations
                 }) else {
                     continuation.resume(returning: nil)
                     return
                 }
 
+                var faceObservations: [VNFaceObservation] = []
+                let faceRequest = self.makeFaceDetectionRequest { observations in
+                    faceObservations = observations
+                }
+
                 do {
                     let handler = VNImageRequestHandler(data: imageData, options: [:])
-                    try handler.perform([request])
+                    try handler.perform([objectRequest, faceRequest])
+                    continuation.resume(returning: Self.objectDetectionSample(
+                        from: objectObservations,
+                        faces: faceObservations
+                    ))
                 } catch {
                     continuation.resume(returning: nil)
                 }
@@ -2121,11 +2127,27 @@ final class CameraService: NSObject, @unchecked Sendable {
         }
     }
 
+    private var textRecognitionInterval: TimeInterval {
+        max(0.16, 1.0 / Double(max(5, frameProcessorTargetFPS)))
+    }
+
+    private var documentDetectionInterval: TimeInterval {
+        max(0.22, 1.35 / Double(max(5, frameProcessorTargetFPS)))
+    }
+
+    private var classificationInterval: TimeInterval {
+        max(0.34, 2.5 / Double(max(5, frameProcessorTargetFPS)))
+    }
+
+    private var objectDetectionInterval: TimeInterval {
+        max(0.5, 4.6 / Double(max(5, frameProcessorTargetFPS)))
+    }
+
     private func maybeDeliverRecognizedText(from sampleBuffer: CMSampleBuffer) {
         guard textRecognitionEnabled, onRecognizedText != nil, !isProcessingTextRecognition else { return }
 
         let uptime = ProcessInfo.processInfo.systemUptime
-        guard uptime - lastTextRecognitionUptime >= 0.45 else { return }
+        guard uptime - lastTextRecognitionUptime >= textRecognitionInterval else { return }
         lastTextRecognitionUptime = uptime
         isProcessingTextRecognition = true
 
@@ -2183,7 +2205,7 @@ final class CameraService: NSObject, @unchecked Sendable {
         guard documentDetectionEnabled, onDetectedDocument != nil, !isProcessingDocumentDetection else { return }
 
         let uptime = ProcessInfo.processInfo.systemUptime
-        guard uptime - lastDocumentDetectionUptime >= 0.38 else { return }
+        guard uptime - lastDocumentDetectionUptime >= documentDetectionInterval else { return }
         lastDocumentDetectionUptime = uptime
         isProcessingDocumentDetection = true
 
@@ -2234,7 +2256,7 @@ final class CameraService: NSObject, @unchecked Sendable {
               !isProcessingMLClassification else { return }
 
         let uptime = ProcessInfo.processInfo.systemUptime
-        guard uptime - lastMLClassificationUptime >= 0.8 else { return }
+        guard uptime - lastMLClassificationUptime >= classificationInterval else { return }
         lastMLClassificationUptime = uptime
         isProcessingMLClassification = true
 
@@ -2271,23 +2293,21 @@ final class CameraService: NSObject, @unchecked Sendable {
               !isProcessingObjectDetection else { return }
 
         let uptime = ProcessInfo.processInfo.systemUptime
-        guard uptime - lastObjectDetectionUptime >= 0.85 else { return }
+        guard uptime - lastObjectDetectionUptime >= objectDetectionInterval else { return }
         lastObjectDetectionUptime = uptime
         isProcessingObjectDetection = true
 
-        guard let request = makeObjectDetectionRequest(resultHandler: { [weak self] observations in
-            guard let self else { return }
-            let sample = Self.objectDetectionSample(from: observations)
-            let stableSample = self.smoothedObjectDetectionSample(from: sample)
-            DispatchQueue.main.async { [weak self] in
-                self?.onDetectedObjects?(stableSample)
-            }
-            self.sessionQueue.async {
-                self.isProcessingObjectDetection = false
-            }
+        var objectObservations: [VNRecognizedObjectObservation] = []
+        guard let objectRequest = makeObjectDetectionRequest(resultHandler: { observations in
+            objectObservations = observations
         }) else {
             isProcessingObjectDetection = false
             return
+        }
+
+        var faceObservations: [VNFaceObservation] = []
+        let faceRequest = makeFaceDetectionRequest { observations in
+            faceObservations = observations
         }
 
         do {
@@ -2296,7 +2316,19 @@ final class CameraService: NSObject, @unchecked Sendable {
                 orientation: visionImageOrientation(),
                 options: [:]
             )
-            try handler.perform([request])
+            try handler.perform([objectRequest, faceRequest])
+
+            let sample = Self.objectDetectionSample(
+                from: objectObservations,
+                faces: faceObservations
+            )
+            let stableSample = smoothedObjectDetectionSample(from: sample)
+            DispatchQueue.main.async { [weak self] in
+                self?.onDetectedObjects?(stableSample)
+            }
+            sessionQueue.async {
+                self.isProcessingObjectDetection = false
+            }
         } catch {
             isProcessingObjectDetection = false
         }
@@ -2346,7 +2378,18 @@ final class CameraService: NSObject, @unchecked Sendable {
 #endif
     }
 
-    private static func objectDetectionSample(from observations: [VNRecognizedObjectObservation]) -> ObjectDetectionSample? {
+    private func makeFaceDetectionRequest(resultHandler: @escaping ([VNFaceObservation]) -> Void) -> VNRequest {
+        let request = VNDetectFaceRectanglesRequest { request, _ in
+            let observations = (request.results as? [VNFaceObservation]) ?? []
+            resultHandler(observations)
+        }
+        return request
+    }
+
+    private static func objectDetectionSample(
+        from observations: [VNRecognizedObjectObservation],
+        faces: [VNFaceObservation]
+    ) -> ObjectDetectionSample? {
         let objects = observations
             .prefix(6)
             .compactMap { observation -> DetectedObject? in
@@ -2364,7 +2407,33 @@ final class CameraService: NSObject, @unchecked Sendable {
                     boundingBox: rect
                 )
             }
-        return objects.isEmpty ? nil : ObjectDetectionSample(objects: Array(objects))
+
+        let faceObjects = faces
+            .prefix(4)
+            .compactMap { observation -> DetectedObject? in
+                guard observation.confidence >= 0.48 else { return nil }
+                let rect = CGRect(
+                    x: observation.boundingBox.minX,
+                    y: 1 - observation.boundingBox.maxY,
+                    width: observation.boundingBox.width,
+                    height: observation.boundingBox.height
+                )
+                return DetectedObject(
+                    label: humanizedClassificationTitle("face"),
+                    confidence: max(observation.confidence, 0.62),
+                    boundingBox: rect
+                )
+            }
+
+        let merged = Array((objects + faceObjects).sorted { lhs, rhs in
+            if lhs.confidence == rhs.confidence {
+                return lhs.boundingBox.width * lhs.boundingBox.height > rhs.boundingBox.width * rhs.boundingBox.height
+            }
+            return lhs.confidence > rhs.confidence
+        }
+        .prefix(8))
+
+        return merged.isEmpty ? nil : ObjectDetectionSample(objects: merged)
     }
 
     private func smoothedClassificationSample(from sample: ImageClassificationSample?) -> ImageClassificationSample? {
@@ -2524,6 +2593,10 @@ final class CameraService: NSObject, @unchecked Sendable {
 
     private static let localizedMLPhraseMap: [String: String] = [
         "person": "Osoba",
+        "face": "Tvář",
+        "human face": "Tvář",
+        "portrait": "Portrét",
+        "selfie": "Selfie",
         "bicycle": "Kolo",
         "car": "Auto",
         "motorcycle": "Motorka",
@@ -2643,6 +2716,10 @@ final class CameraService: NSObject, @unchecked Sendable {
         "giraffe": "žirafa",
         "person": "osoba",
         "people": "lidé",
+        "face": "tvář",
+        "facial": "obličejový",
+        "portrait": "portrét",
+        "selfie": "selfie",
         "man": "muž",
         "woman": "žena",
         "child": "dítě",

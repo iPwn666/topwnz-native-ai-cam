@@ -62,6 +62,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private var isFlashEnabled = false
     private var zoomFactor: CGFloat = 1.0
     private var pinchStartZoomFactor: CGFloat = 1.0
+    private var capturePanStartZoomFactor: CGFloat = 1.0
+    private var capturePanStartY: CGFloat = 0
     private var preferredFPS = 30
     private var isNightBoostEnabled = false
     private var isScannerEnabled = false
@@ -123,6 +125,14 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let detectSectionButton = UIButton(type: .system)
     private let proSectionButton = UIButton(type: .system)
     private let rightButtonStack = UIStackView()
+    private let visionRailStack = UIStackView()
+    private let railFlipButton = UIButton(type: .system)
+    private let railFlashButton = UIButton(type: .system)
+    private let railFPSButton = UIButton(type: .system)
+    private let railNightButton = UIButton(type: .system)
+    private let railProfileButton = UIButton(type: .system)
+    private let railScannerButton = UIButton(type: .system)
+    private let railSettingsButton = UIButton(type: .system)
     private let flipButton = UIButton(type: .system)
     private let flashButton = UIButton(type: .system)
     private let zoomBadgeButton = UIButton(type: .system)
@@ -147,6 +157,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let documentButton = UIButton(type: .system)
     private let mlButton = UIButton(type: .system)
     private let objectButton = UIButton(type: .system)
+    private let processingProfileButton = UIButton(type: .system)
     private let resetProButton = UIButton(type: .system)
     private let brandLinkButton = UIButton(type: .system)
     private let askAIButton = UIButton(type: .system)
@@ -367,6 +378,10 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         rightButtonStack.translatesAutoresizingMaskIntoConstraints = false
         rightButtonStack.axis = .vertical
         rightButtonStack.spacing = 8
+        visionRailStack.translatesAutoresizingMaskIntoConstraints = false
+        visionRailStack.axis = .vertical
+        visionRailStack.alignment = .fill
+        visionRailStack.spacing = 10
 
         configureOverlayButton(flipButton, symbolName: "camera.rotate", action: #selector(flipTapped), label: AppStrings.flipCamera, title: AppStrings.flipCamera)
         configureOverlayButton(flashButton, symbolName: "bolt.slash.fill", action: #selector(flashTapped), label: AppStrings.flashOff, title: AppStrings.flash)
@@ -392,21 +407,34 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         configureTuningButton(documentButton, title: "DOC", action: #selector(documentTapped))
         configureTuningButton(mlButton, title: "ML", action: #selector(mlTapped))
         configureTuningButton(objectButton, title: "OBJ", action: #selector(objectTapped))
+        configureProcessingProfileButton()
         configureOverlayButton(resetProButton, symbolName: "arrow.counterclockwise", action: #selector(resetProTapped), label: AppStrings.resetPro, title: AppStrings.resetPro)
         configureBrandLinkButton()
+        configureRailButton(railFlipButton, symbolName: "camera.rotate", title: nil, action: #selector(flipTapped))
+        configureRailButton(railFlashButton, symbolName: "bolt.slash.fill", title: nil, action: #selector(flashTapped))
+        configureRailButton(railFPSButton, symbolName: nil, title: "30", action: #selector(fpsTapped))
+        configureRailButton(railNightButton, symbolName: "moon.fill", title: nil, action: #selector(nightModeTapped))
+        configureRailButton(railProfileButton, symbolName: nil, title: AppStrings.frameProcessorProfileLabel(settings.frameProcessorProfile), action: #selector(processingProfileTapped))
+        attachProcessingRateGesture(to: railProfileButton)
+        configureRailButton(railScannerButton, symbolName: "qrcode.viewfinder", title: nil, action: #selector(scannerTapped))
+        configureRailButton(railSettingsButton, symbolName: "gearshape.fill", title: nil, action: #selector(settingsTapped))
 
         captureButton.translatesAutoresizingMaskIntoConstraints = false
         captureButton.backgroundColor = .clear
-        captureButton.layer.cornerRadius = 29
+        captureButton.layer.cornerRadius = 37
         captureButton.layer.cornerCurve = .continuous
         captureButton.layer.borderWidth = 4
         captureButton.layer.borderColor = UIColor.white.cgColor
+        captureButton.layer.shadowColor = UIColor.systemPink.cgColor
+        captureButton.layer.shadowOpacity = 0.22
+        captureButton.layer.shadowRadius = 18
+        captureButton.layer.shadowOffset = .zero
         captureButton.addTarget(self, action: #selector(captureTapped), for: .touchUpInside)
         installPressAnimation(on: captureButton, pressedScale: 0.95)
 
         captureInnerView.translatesAutoresizingMaskIntoConstraints = false
         captureInnerView.backgroundColor = .white
-        captureInnerView.layer.cornerRadius = 20
+        captureInnerView.layer.cornerRadius = 26
         captureInnerView.layer.cornerCurve = .continuous
         captureInnerView.isUserInteractionEnabled = false
         captureButton.addSubview(captureInnerView)
@@ -481,7 +509,13 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         let longPressRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleCaptureLongPress(_:)))
         longPressRecognizer.minimumPressDuration = 0.22
         longPressRecognizer.allowableMovement = 40
+        longPressRecognizer.delegate = self
         captureButton.addGestureRecognizer(longPressRecognizer)
+
+        let capturePanRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handleCapturePan(_:)))
+        capturePanRecognizer.maximumNumberOfTouches = 1
+        capturePanRecognizer.delegate = self
+        captureButton.addGestureRecognizer(capturePanRecognizer)
 
         let panRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePreviewPan(_:)))
         panRecognizer.maximumNumberOfTouches = 1
@@ -503,7 +537,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func layoutUI() {
-        [previewView, imageView, zebraOverlayView, focusPeakingOverlayView, ocrOverlayView, documentOverlayView, objectOverlayView, gridOverlayView, topFadeView, bottomFadeView, statusCard, modeCard, toolsPanelCard, toolsToggleButton, resultCard, analyzeButton, shareButton, captureButton, permissionCard, activityIndicator, focusIndicatorView, scannerFrameView, tuningHUDCard, recordingHUDCard, histogramCard, levelView, brandLinkButton].forEach {
+        [previewView, imageView, zebraOverlayView, focusPeakingOverlayView, ocrOverlayView, documentOverlayView, objectOverlayView, gridOverlayView, topFadeView, bottomFadeView, statusCard, modeCard, toolsPanelCard, toolsToggleButton, visionRailStack, resultCard, analyzeButton, shareButton, captureButton, permissionCard, activityIndicator, focusIndicatorView, scannerFrameView, tuningHUDCard, recordingHUDCard, histogramCard, levelView, brandLinkButton].forEach {
             view.addSubview($0)
         }
 
@@ -517,6 +551,9 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         toolsPanelCard.contentView.addSubview(toolsSectionStack)
         toolsPanelCard.contentView.addSubview(toolsScrollView)
         toolsScrollView.addSubview(rightButtonStack)
+        [railFlipButton, railFlashButton, railFPSButton, railNightButton, railProfileButton, railScannerButton, railSettingsButton].forEach {
+            visionRailStack.addArrangedSubview($0)
+        }
         embed(tuningHUDLabel, in: tuningHUDCard, inset: 10)
         let recordingHUDStack = UIStackView(arrangedSubviews: [recordingDotView, recordingTimeLabel])
         recordingHUDStack.axis = .horizontal
@@ -630,8 +667,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             toolsToggleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             toolsToggleButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
 
+            visionRailStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            visionRailStack.topAnchor.constraint(equalTo: toolsToggleButton.bottomAnchor, constant: 12),
+
             toolsPanelCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            toolsPanelCard.topAnchor.constraint(equalTo: toolsToggleButton.bottomAnchor, constant: 10),
+            toolsPanelCard.topAnchor.constraint(equalTo: visionRailStack.topAnchor),
             toolsPanelCard.widthAnchor.constraint(equalToConstant: 168),
             toolsPanelCard.heightAnchor.constraint(equalToConstant: 438),
             toolsPanelCard.bottomAnchor.constraint(lessThanOrEqualTo: captureButton.topAnchor, constant: -16),
@@ -662,13 +702,13 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
-            captureButton.widthAnchor.constraint(equalToConstant: 58),
-            captureButton.heightAnchor.constraint(equalToConstant: 58),
+            captureButton.widthAnchor.constraint(equalToConstant: 74),
+            captureButton.heightAnchor.constraint(equalToConstant: 74),
 
             captureInnerView.centerXAnchor.constraint(equalTo: captureButton.centerXAnchor),
             captureInnerView.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
-            captureInnerView.widthAnchor.constraint(equalToConstant: 40),
-            captureInnerView.heightAnchor.constraint(equalToConstant: 40),
+            captureInnerView.widthAnchor.constraint(equalToConstant: 52),
+            captureInnerView.heightAnchor.constraint(equalToConstant: 52),
 
             analyzeButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
             analyzeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -724,6 +764,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func refreshUI() {
+        refreshFrameProcessorProfileState()
         let isAuthorized = cameraService.authorizationStatus == .authorized
         let hasImage = latestImageData != nil
         let hasVideo = latestVideoURL != nil
@@ -760,6 +801,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         modeControl.selectedSegmentIndex = AnalysisMode.allCases.firstIndex(of: settings.analysisMode) ?? 0
         modeControl.isEnabled = !isCapturing && !isAnalyzing && !isRecordingVideo
         modeCard.alpha = isAuthorized ? 1.0 : 0.55
+        visionRailStack.isHidden = !isAuthorized
         brandLinkButton.isHidden = !isAuthorized
         brandLinkButton.alpha = hasImage || hasVideo || hasScan ? 0.58 : 0.78
 
@@ -784,6 +826,19 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         fpsButton.alpha = cameraService.supports60FPS && !hasImage && !hasVideo ? 1.0 : 0.45
         nightButton.isEnabled = canInteractWithCamera && cameraService.supportsLowLightBoost
         nightButton.alpha = cameraService.supportsLowLightBoost && !hasImage && !hasVideo ? 1.0 : 0.45
+        railFlipButton.isEnabled = canInteractWithCamera
+        railFlipButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
+        railFlashButton.isEnabled = flashButton.isEnabled
+        railFlashButton.alpha = flashButton.alpha
+        railFPSButton.isEnabled = fpsButton.isEnabled
+        railFPSButton.alpha = fpsButton.alpha
+        railNightButton.isEnabled = nightButton.isEnabled
+        railNightButton.alpha = nightButton.alpha
+        railProfileButton.isEnabled = canInteractWithCamera
+        railProfileButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
+        railScannerButton.isEnabled = canInteractWithCamera
+        railScannerButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
+        railSettingsButton.isEnabled = true
         locationButton.isEnabled = !hasImage && !hasVideo
         locationButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
         whiteBalanceButton.isEnabled = canInteractWithCamera
@@ -823,6 +878,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         updateZoomBadge()
         updateFPSButton()
         updateNightButton()
+        updateProcessingProfileButton()
+        updateVisionRailButtons()
         updateLocationButton()
         updateWhiteBalanceButton()
         updateAutofocusButton()
@@ -938,6 +995,46 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         nightButton.configuration?.image = UIImage(systemName: symbol)
         nightButton.accessibilityLabel = isNightBoostEnabled ? AppStrings.nightModeOn : AppStrings.nightModeOff
         nightButton.tintColor = isNightBoostEnabled ? UIColor.systemTeal : .white
+    }
+
+    private func updateProcessingProfileButton() {
+        let title = AppStrings.frameProcessorProfileLabel(settings.frameProcessorProfile)
+        let subtitle = "\(settings.frameProcessorTargetFPS) FPS"
+        processingProfileButton.configuration?.title = title
+        processingProfileButton.configuration?.subtitle = subtitle
+        processingProfileButton.backgroundColor = settings.frameProcessorProfile == .off
+            ? UIColor.black.withAlphaComponent(0.28)
+            : UIColor.systemPink.withAlphaComponent(0.88)
+        processingProfileButton.tintColor = .white
+        processingProfileButton.accessibilityLabel = "\(AppStrings.frameProcessor) \(AppStrings.frameProcessorProfileTitle(settings.frameProcessorProfile))"
+    }
+
+    private func updateVisionRailButtons() {
+        configureRailSymbolButton(railFlipButton, symbolName: "camera.rotate")
+        configureRailSymbolButton(
+            railFlashButton,
+            symbolName: (isScannerEnabled && latestImageData == nil && latestVideoURL == nil)
+                ? (isTorchEnabled ? "flashlight.on.fill" : "flashlight.off.fill")
+                : (isFlashEnabled ? "bolt.fill" : "bolt.slash.fill")
+        )
+        railFlashButton.tintColor = ((isScannerEnabled ? isTorchEnabled : isFlashEnabled) ? UIColor.systemYellow : .white)
+
+        railFPSButton.configuration?.title = "\(preferredFPS)"
+        railFPSButton.configuration?.subtitle = nil
+        railFPSButton.tintColor = preferredFPS >= 60 ? UIColor.systemBlue : .white
+
+        configureRailSymbolButton(railNightButton, symbolName: isNightBoostEnabled ? "moon.stars.fill" : "moon.fill")
+        railNightButton.tintColor = isNightBoostEnabled ? UIColor.systemTeal : .white
+
+        railProfileButton.configuration?.title = AppStrings.frameProcessorProfileLabel(settings.frameProcessorProfile)
+        railProfileButton.configuration?.subtitle = nil
+        railProfileButton.tintColor = settings.frameProcessorProfile == .off ? .white : UIColor.systemPink
+
+        configureRailSymbolButton(railScannerButton, symbolName: isScannerEnabled ? "viewfinder.circle.fill" : "qrcode.viewfinder")
+        railScannerButton.tintColor = isScannerEnabled ? UIColor.systemGreen : .white
+
+        configureRailSymbolButton(railSettingsButton, symbolName: "gearshape.fill")
+        railSettingsButton.tintColor = .white
     }
 
     private func updateLocationButton() {
@@ -1183,7 +1280,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         case .quick:
             return [flipButton, flashButton, zoomBadgeButton, fpsButton, nightButton, locationButton, vaultButton, settingsButton]
         case .detect:
-            return [scannerButton, ocrButton, documentButton, mlButton, objectButton]
+            return [scannerButton, processingProfileButton, ocrButton, documentButton, mlButton, objectButton]
         case .pro:
             return [whiteBalanceButton, autofocusButton, lockButton, resetProButton, exposureTuneButton, shutterTuneButton, isoTuneButton, focusTuneButton, gridButton, levelButton, histogramButton, zebraButton]
         }
@@ -1259,9 +1356,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         }
 
         captureInnerView.backgroundColor = innerColor
-        captureInnerView.layer.cornerRadius = isRecordingVideo ? 11 : 20
-        captureInnerView.transform = (isCapturing || isRecordingVideo) ? CGAffineTransform(scaleX: 0.74, y: 0.74) : .identity
+        captureInnerView.layer.cornerRadius = isRecordingVideo ? 13 : 26
+        captureInnerView.transform = (isCapturing || isRecordingVideo) ? CGAffineTransform(scaleX: 0.72, y: 0.72) : .identity
         captureButton.layer.borderColor = UIColor.white.withAlphaComponent(captureButton.isEnabled ? 1.0 : 0.45).cgColor
+        captureButton.layer.shadowOpacity = (isCapturing || isRecordingVideo) ? 0.42 : 0.22
+        captureButton.layer.shadowRadius = (isCapturing || isRecordingVideo) ? 26 : 18
     }
 
     private func currentStatusText(hasImage: Bool, hasVideo: Bool, hasScan: Bool) -> String {
@@ -1481,6 +1580,10 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private func prepareCamera() async {
         await cameraService.requestAccessIfNeeded()
         await applySavedCameraTuning(persistIfAdjusted: true)
+        _ = await cameraService.setFrameProcessorTargetFPS(settings.frameProcessorTargetFPS)
+        if settings.frameProcessorProfile != .off {
+            await applyProcessingProfile(settings.frameProcessorProfile, persist: false)
+        }
         previewView.previewLayer.session = cameraService.session
         zoomFactor = cameraService.zoomFactor
         preferredFPS = cameraService.currentFPS
@@ -1502,6 +1605,98 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         settings.manualFocusPosition = Double(cameraService.currentManualFocusPosition)
         updateScannerRectOfInterest()
         refreshUI()
+    }
+
+    private func applyProcessingProfile(_ profile: FrameProcessorProfile, persist: Bool = true) async {
+        let nextRate = max(5, min(settings.frameProcessorTargetFPS, 15))
+        let state: (Bool, Bool, Bool, Bool, Int)
+
+        switch profile {
+        case .off:
+            state = await cameraService.configureFrameProcessing(
+                textEnabled: false,
+                documentEnabled: false,
+                mlClassificationEnabled: false,
+                objectDetectionEnabled: false,
+                targetFPS: nextRate
+            )
+        case .balanced:
+            state = await cameraService.configureFrameProcessing(
+                textEnabled: true,
+                documentEnabled: true,
+                mlClassificationEnabled: true,
+                objectDetectionEnabled: false,
+                targetFPS: nextRate
+            )
+        case .documents:
+            state = await cameraService.configureFrameProcessing(
+                textEnabled: true,
+                documentEnabled: true,
+                mlClassificationEnabled: false,
+                objectDetectionEnabled: false,
+                targetFPS: nextRate
+            )
+        case .detection:
+            state = await cameraService.configureFrameProcessing(
+                textEnabled: false,
+                documentEnabled: false,
+                mlClassificationEnabled: true,
+                objectDetectionEnabled: true,
+                targetFPS: nextRate
+            )
+        case .full:
+            state = await cameraService.configureFrameProcessing(
+                textEnabled: true,
+                documentEnabled: true,
+                mlClassificationEnabled: true,
+                objectDetectionEnabled: true,
+                targetFPS: nextRate
+            )
+        case .custom:
+            state = await cameraService.configureFrameProcessing(
+                textEnabled: isLiveOCREnabled,
+                documentEnabled: isDocumentModeEnabled,
+                mlClassificationEnabled: isLiveMLEnabled,
+                objectDetectionEnabled: isObjectDetectionEnabled,
+                targetFPS: nextRate
+            )
+        }
+
+        isLiveOCREnabled = state.0
+        isDocumentModeEnabled = state.1
+        isLiveMLEnabled = state.2
+        isObjectDetectionEnabled = state.3
+        settings.frameProcessorTargetFPS = state.4
+        refreshFrameProcessorProfileState()
+
+        if persist {
+            try? settingsStore.save(settings)
+        }
+        refreshUI()
+    }
+
+    private func refreshFrameProcessorProfileState() {
+        switch (isLiveOCREnabled, isDocumentModeEnabled, isLiveMLEnabled, isObjectDetectionEnabled) {
+        case (false, false, false, false):
+            settings.frameProcessorProfile = .off
+        case (true, true, true, false):
+            settings.frameProcessorProfile = .balanced
+        case (true, true, false, false):
+            settings.frameProcessorProfile = .documents
+        case (false, false, true, true):
+            settings.frameProcessorProfile = .detection
+        case (true, true, true, true):
+            settings.frameProcessorProfile = .full
+        default:
+            settings.frameProcessorProfile = .custom
+        }
+    }
+
+    private func cycleFrameProcessorProfile() -> FrameProcessorProfile {
+        let ordered: [FrameProcessorProfile] = [.off, .balanced, .documents, .detection, .full]
+        let current = settings.frameProcessorProfile == .custom ? .full : settings.frameProcessorProfile
+        let index = ordered.firstIndex(of: current) ?? 0
+        return ordered[(index + 1) % ordered.count]
     }
 
 #if canImport(CoreLocation)
@@ -1562,6 +1757,41 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     @objc
     private func settingsTapped() {
         presentSettings()
+    }
+
+    @objc
+    private func processingProfileTapped() {
+        let next = cycleFrameProcessorProfile()
+        Task { [weak self] in
+            guard let self else { return }
+            self.settings.frameProcessorProfile = next
+            await self.applyProcessingProfile(next)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            self.updateTuningHUD(
+                text: "\(AppStrings.frameProcessor) • \(AppStrings.frameProcessorProfileTitle(self.settings.frameProcessorProfile)) • \(self.settings.frameProcessorTargetFPS) FPS",
+                animated: true
+            )
+        }
+    }
+
+    @objc
+    private func processingRateLongPressed(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began else { return }
+        let ordered = [5, 10, 15]
+        let currentIndex = ordered.firstIndex(of: settings.frameProcessorTargetFPS) ?? 1
+        let nextRate = ordered[(currentIndex + 1) % ordered.count]
+        settings.frameProcessorTargetFPS = nextRate
+
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await self.cameraService.setFrameProcessorTargetFPS(nextRate)
+            try? self.settingsStore.save(self.settings)
+            self.updateProcessingProfileButton()
+            self.updateVisionRailButtons()
+            self.updateTuningHUD(text: "\(AppStrings.frameProcessorRate) • \(nextRate) FPS", animated: true)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            self.refreshUI()
+        }
     }
 
     @objc
@@ -1707,20 +1937,15 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             self.isLiveOCREnabled = await self.cameraService.setTextRecognitionEnabled(requested)
             if self.isLiveOCREnabled {
                 self.isScannerEnabled = false
-                self.isDocumentModeEnabled = false
-                self.isLiveMLEnabled = false
-                self.isObjectDetectionEnabled = false
-                self.latestDocumentQuad = nil
-                self.documentOverlayView.update(quad: nil)
-                self.liveClassification = nil
-                self.liveObjectDetection = nil
-                self.objectOverlayView.update(objects: [])
             } else {
                 self.liveOCRBlocks.removeAll()
+                self.liveOCRSample = nil
                 self.liveOCRDisplayBlocks.removeAll()
                 self.selectedOCRText = nil
                 self.ocrOverlayView.update(blocks: [], selectedText: nil)
             }
+            self.refreshFrameProcessorProfileState()
+            try? self.settingsStore.save(self.settings)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             self.refreshUI()
         }
@@ -1734,21 +1959,13 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             self.isDocumentModeEnabled = await self.cameraService.setDocumentDetectionEnabled(requested)
             if self.isDocumentModeEnabled {
                 self.isScannerEnabled = false
-                self.isLiveOCREnabled = false
-                self.isLiveMLEnabled = false
-                self.isObjectDetectionEnabled = false
-                self.liveOCRBlocks.removeAll()
-                self.liveOCRDisplayBlocks.removeAll()
-                self.selectedOCRText = nil
-                self.ocrOverlayView.update(blocks: [], selectedText: nil)
-                self.liveClassification = nil
-                self.liveObjectDetection = nil
-                self.objectOverlayView.update(objects: [])
             }
             if !self.isDocumentModeEnabled {
                 self.latestDocumentQuad = nil
                 self.documentOverlayView.update(quad: nil)
             }
+            self.refreshFrameProcessorProfileState()
+            try? self.settingsStore.save(self.settings)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             self.refreshUI()
         }
@@ -1768,21 +1985,12 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             self.isPreparingMLModel = false
             if self.isLiveMLEnabled {
                 self.isScannerEnabled = false
-                self.isLiveOCREnabled = false
-                self.isDocumentModeEnabled = false
-                self.isObjectDetectionEnabled = false
-                self.liveOCRBlocks.removeAll()
-                self.liveOCRDisplayBlocks.removeAll()
-                self.selectedOCRText = nil
-                self.ocrOverlayView.update(blocks: [], selectedText: nil)
-                self.latestDocumentQuad = nil
-                self.documentOverlayView.update(quad: nil)
-                self.liveObjectDetection = nil
-                self.objectOverlayView.update(objects: [])
                 self.updateTuningHUD(text: AppStrings.coreMLReady, animated: true)
             } else {
                 self.liveClassification = nil
             }
+            self.refreshFrameProcessorProfileState()
+            try? self.settingsStore.save(self.settings)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             self.refreshUI()
         }
@@ -1802,21 +2010,13 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             self.isPreparingMLModel = false
             if self.isObjectDetectionEnabled {
                 self.isScannerEnabled = false
-                self.isLiveOCREnabled = false
-                self.isDocumentModeEnabled = false
-                self.isLiveMLEnabled = false
-                self.liveOCRBlocks.removeAll()
-                self.liveOCRDisplayBlocks.removeAll()
-                self.selectedOCRText = nil
-                self.ocrOverlayView.update(blocks: [], selectedText: nil)
-                self.latestDocumentQuad = nil
-                self.documentOverlayView.update(quad: nil)
-                self.liveClassification = nil
                 self.updateTuningHUD(text: AppStrings.coreMLReady, animated: true)
             } else {
                 self.liveObjectDetection = nil
                 self.objectOverlayView.update(objects: [])
             }
+            self.refreshFrameProcessorProfileState()
+            try? self.settingsStore.save(self.settings)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             self.refreshUI()
         }
@@ -1904,6 +2104,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 isLiveMLEnabled = false
                 isObjectDetectionEnabled = false
                 liveOCRBlocks.removeAll()
+                liveOCRSample = nil
                 liveOCRDisplayBlocks.removeAll()
                 selectedOCRText = nil
                 ocrOverlayView.update(blocks: [], selectedText: nil)
@@ -1912,6 +2113,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 liveClassification = nil
                 liveObjectDetection = nil
                 objectOverlayView.update(objects: [])
+                settings.frameProcessorProfile = .off
+                try? settingsStore.save(settings)
             }
             if !requested, isTorchEnabled {
                 isTorchEnabled = await cameraService.setTorchEnabled(false)
@@ -2033,6 +2236,35 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             Task { await stopVideoRecording() }
         default:
             break
+        }
+    }
+
+    @objc
+    private func handleCapturePan(_ recognizer: UIPanGestureRecognizer) {
+        guard latestImageData == nil,
+              latestVideoURL == nil,
+              cameraService.authorizationStatus.isAuthorizedForCamera else { return }
+
+        let point = recognizer.location(in: view)
+        switch recognizer.state {
+        case .began:
+            capturePanStartY = point.y
+            capturePanStartZoomFactor = zoomFactor
+            updateTuningHUD(text: "\(AppStrings.zoom) • \(String(format: "%.1fx", zoomFactor)) • \(AppStrings.captureZoomHint)", animated: true)
+        case .changed:
+            let delta = capturePanStartY - point.y
+            let travel = max(120, view.bounds.height * 0.24)
+            let progress = max(-1, min(1, delta / travel))
+            let zoomRange = cameraService.maxZoomFactor - cameraService.minZoomFactor
+            let rawZoom = capturePanStartZoomFactor + (zoomRange * progress * 0.55)
+            let boundedZoom = max(cameraService.minZoomFactor, min(rawZoom, cameraService.maxZoomFactor))
+            guard abs(boundedZoom - zoomFactor) > 0.01 else { return }
+            zoomFactor = boundedZoom
+            Task { await cameraService.setZoomFactor(boundedZoom) }
+            updateTuningHUD(text: "\(AppStrings.zoom) • \(String(format: "%.1fx", boundedZoom))", animated: false)
+            refreshUI()
+        default:
+            capturePanStartY = 0
         }
     }
 
@@ -2851,7 +3083,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private func compactPreviewSummary() -> String {
-        "\(AppStrings.modeLabel(settings.analysisMode)) • \(preferredFPS) \(AppStrings.fps) • \(String(format: "%.1fx", zoomFactor))"
+        "\(AppStrings.modeLabel(settings.analysisMode)) • \(AppStrings.frameProcessorProfileLabel(settings.frameProcessorProfile)) \(settings.frameProcessorTargetFPS) FPS • \(preferredFPS) \(AppStrings.fps) • \(String(format: "%.1fx", zoomFactor))"
     }
 
     private func deleteVaultEntry(_ entry: ScanVaultEntry) {
@@ -3318,6 +3550,55 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         applyToolTileStyle(fpsButton)
     }
 
+    private func configureProcessingProfileButton() {
+        processingProfileButton.translatesAutoresizingMaskIntoConstraints = false
+        var configuration = UIButton.Configuration.plain()
+        configuration.title = AppStrings.frameProcessorProfileLabel(settings.frameProcessorProfile)
+        configuration.subtitle = "\(settings.frameProcessorTargetFPS) FPS"
+        configuration.titleAlignment = .center
+        configuration.baseForegroundColor = .white
+        processingProfileButton.configuration = configuration
+        processingProfileButton.addTarget(self, action: #selector(processingProfileTapped), for: .touchUpInside)
+        installPressAnimation(on: processingProfileButton)
+        attachProcessingRateGesture(to: processingProfileButton)
+        applyToolTileStyle(processingProfileButton)
+    }
+
+    private func configureRailButton(_ button: UIButton, symbolName: String?, title: String?, action: Selector) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        var configuration = UIButton.Configuration.plain()
+        if let symbolName {
+            configuration.image = UIImage(systemName: symbolName)
+        }
+        configuration.title = title
+        configuration.baseForegroundColor = .white
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
+        configuration.imagePadding = 0
+        configuration.titleAlignment = .center
+        button.configuration = configuration
+        button.backgroundColor = UIColor(white: 0.45, alpha: 0.32)
+        button.layer.cornerRadius = 24
+        button.layer.cornerCurve = .continuous
+        button.clipsToBounds = true
+        button.addTarget(self, action: action, for: .touchUpInside)
+        installPressAnimation(on: button, pressedScale: 0.94)
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 48),
+            button.heightAnchor.constraint(equalToConstant: 48),
+        ])
+    }
+
+    private func configureRailSymbolButton(_ button: UIButton, symbolName: String) {
+        button.configuration?.image = UIImage(systemName: symbolName)
+        button.configuration?.title = nil
+    }
+
+    private func attachProcessingRateGesture(to button: UIButton) {
+        let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(processingRateLongPressed(_:)))
+        recognizer.minimumPressDuration = 0.35
+        button.addGestureRecognizer(recognizer)
+    }
+
     private func configureLocationButton() {
         locationButton.translatesAutoresizingMaskIntoConstraints = false
         var configuration = UIButton.Configuration.plain()
@@ -3376,6 +3657,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             statusCard,
             modeCard,
             toolsToggleButton,
+            visionRailStack,
             toolsPanelCard,
             resultCard,
             histogramCard,
@@ -3390,8 +3672,15 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if gestureRecognizer.view === captureButton || touch.view?.isDescendant(of: captureButton) == true {
+            return true
+        }
         let point = touch.location(in: view)
         return shouldHandlePreviewGesture(at: point)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        gestureRecognizer.view === captureButton || otherGestureRecognizer.view === captureButton
     }
 
     @objc

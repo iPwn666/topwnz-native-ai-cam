@@ -10,6 +10,10 @@ Veřejné repo:
 
 - live camera preview přes `AVFoundation`
 - foto a long-press video
+- VisionCamera-inspired camera UX:
+  - pravý floating rail s kruhovými hlavními ovladači
+  - větší shutter ring
+  - vertikální drag na spoušti pro rychlý zoom
 - pinch-to-zoom, tap-to-focus, manual focus, AE/AF lock
 - ruční `EXP / SHR / ISO / FOC`
 - gesture tuning: `↕` přepínání aktivního parametru + `↔` jemné ladění
@@ -41,6 +45,10 @@ Veřejné repo:
   - live rectangle detection
   - perspektivní korekce po vyfocení
 - on-device live ML klasifikace scény/objektů
+- frame pipeline profily:
+  - `OFF`, `SMART`, `DOC`, `DET`, `FULL`
+  - více on-device processorů může běžet současně
+  - target FPS throttling pro Vision/Core ML processing
 - české on-device labely:
   - objektová detekce i klasifikace se teď překládají do češtiny přímo v appce
 - stabilnější live Core ML:
@@ -55,6 +63,7 @@ Veřejné repo:
   - live overlay boxy s labely
   - detekce i nad pořízeným snímkem
   - skupinové české shrnutí typu `2x osoba`, `3x auto`
+  - Vision face detection se přimíchává do stejné live pipeline, takže se v overlay i výstupu ukazují i `tváře`
 - AI analýza přes OpenAI `Responses API`
 - české UI a TTS výstup pro AI/OCR výsledky
 

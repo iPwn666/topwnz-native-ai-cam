@@ -8,6 +8,12 @@ enum AppStrings {
     static var brand: String { "ToPwnZ - native ai cam" }
     static var title: String { isCzech ? "Nativní kamera s AI" : "Native camera with AI" }
     static var settings: String { isCzech ? "Nastavení" : "Settings" }
+    static var frameProcessor: String { isCzech ? "Frame AI" : "Frame AI" }
+    static var frameProcessorOff: String { isCzech ? "Vypnuto" : "Off" }
+    static var frameProcessorRate: String { isCzech ? "Rychlost" : "Rate" }
+    static var frameProcessorHint: String { isCzech ? "Lokální Vision/Core ML pipeline nad živým preview." : "On-device Vision/Core ML pipeline running on live preview." }
+    static var frameProcessorRailHint: String { isCzech ? "Profil frame pipeline" : "Frame pipeline profile" }
+    static var captureZoomHint: String { isCzech ? "Tahem nahoru na spoušti přiblížíš." : "Drag up on shutter to zoom." }
     static var scanVault: String { isCzech ? "Scan Vault" : "Scan Vault" }
     static var vaultEmpty: String { isCzech ? "Vault je zatím prázdný." : "The vault is empty." }
     static var vaultAll: String { isCzech ? "Vše" : "All" }
@@ -68,7 +74,7 @@ enum AppStrings {
     static var capturedMLHint: String { isCzech ? "Scéna byla klasifikována lokálně v zařízení." : "The scene was classified locally on-device." }
     static var objectDetect: String { isCzech ? "Objekty" : "Objects" }
     static var objectDetectReady: String { isCzech ? "Detekce objektů aktivní" : "Object detection ready" }
-    static var objectDetectHint: String { isCzech ? "Lokální detekce objektů běží přímo v zařízení." : "On-device object detection is running locally." }
+    static var objectDetectHint: String { isCzech ? "Lokální detekce objektů a tváří běží přímo v zařízení." : "On-device object and face detection is running locally." }
     static var objectDetectText: String { isCzech ? "Detekované objekty" : "Detected objects" }
     static var objectDetectNoResult: String { isCzech ? "Zatím bez objektů." : "No objects yet." }
     static var capturedObjectText: String { isCzech ? "Objekty ze snímku" : "Captured objects" }
@@ -173,7 +179,7 @@ enum AppStrings {
     static var toolsDetect: String { isCzech ? "Detekce" : "Detect" }
     static var toolsPro: String { isCzech ? "Pro" : "Pro" }
     static var toolsQuickHint: String { isCzech ? "Kamera, světlo, FPS, GPS a přístup." : "Camera, light, FPS, GPS, and access." }
-    static var toolsDetectHint: String { isCzech ? "Scanner, OCR, dokumenty a on-device AI." : "Scanner, OCR, documents, and on-device AI." }
+    static var toolsDetectHint: String { isCzech ? "Scanner, OCR, dokumenty, objekty a tváře." : "Scanner, OCR, documents, objects, and faces." }
     static var toolsProHint: String { isCzech ? "WB, AF, lock a ruční kontrola obrazu." : "WB, AF, lock, and manual image control." }
     static var resetPro: String { isCzech ? "Reset" : "Reset" }
     static var swipeTuningHint: String {
@@ -233,6 +239,28 @@ enum AppStrings {
             : "After sending the shot, the app returns a structured analysis with objects, text, and recommendations."
     }
     static var usingModel: String { isCzech ? "Model" : "Model" }
+
+    static func frameProcessorProfileLabel(_ profile: FrameProcessorProfile) -> String {
+        switch profile {
+        case .off: return isCzech ? "OFF" : "OFF"
+        case .balanced: return isCzech ? "SMART" : "SMART"
+        case .documents: return isCzech ? "DOC" : "DOC"
+        case .detection: return isCzech ? "DET" : "DET"
+        case .full: return isCzech ? "FULL" : "FULL"
+        case .custom: return isCzech ? "CUSTOM" : "CUSTOM"
+        }
+    }
+
+    static func frameProcessorProfileTitle(_ profile: FrameProcessorProfile) -> String {
+        switch profile {
+        case .off: return frameProcessorOff
+        case .balanced: return isCzech ? "Chytrý mix" : "Smart mix"
+        case .documents: return isCzech ? "Dokumenty" : "Documents"
+        case .detection: return isCzech ? "Detekce" : "Detection"
+        case .full: return isCzech ? "Plný profil" : "Full profile"
+        case .custom: return isCzech ? "Vlastní mix" : "Custom mix"
+        }
+    }
 
     static func modeLabel(_ mode: AnalysisMode) -> String {
         switch mode {
