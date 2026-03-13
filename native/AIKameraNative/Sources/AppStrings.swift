@@ -35,6 +35,7 @@ enum AppStrings {
     static var scannerAimHint: String { isCzech ? "Zarovnej QR nebo čárový kód do rámečku." : "Align the QR or barcode inside the frame." }
     static var flashOn: String { isCzech ? "Blesk zap" : "Flash on" }
     static var flashOff: String { isCzech ? "Blesk vyp" : "Flash off" }
+    static var flash: String { isCzech ? "Blesk" : "Flash" }
     static var torchOn: String { isCzech ? "Světlo zap" : "Torch on" }
     static var torchOff: String { isCzech ? "Světlo vyp" : "Torch off" }
     static var flipCamera: String { isCzech ? "Přepnout" : "Flip" }
@@ -42,8 +43,10 @@ enum AppStrings {
     static var fps: String { isCzech ? "FPS" : "FPS" }
     static var nightModeOn: String { isCzech ? "Noční režim zap" : "Night mode on" }
     static var nightModeOff: String { isCzech ? "Noční režim vyp" : "Night mode off" }
+    static var night: String { isCzech ? "Noc" : "Night" }
     static var scannerOn: String { isCzech ? "Scanner zap" : "Scanner on" }
     static var scannerOff: String { isCzech ? "Scanner vyp" : "Scanner off" }
+    static var scanner: String { isCzech ? "Sken" : "Scan" }
     static var liveOCR: String { isCzech ? "Live OCR" : "Live OCR" }
     static var liveOCRReady: String { isCzech ? "OCR aktivní" : "OCR ready" }
     static var liveOCRHint: String { isCzech ? "Klepni na textový blok pro výběr." : "Tap a text block to select it." }
@@ -152,6 +155,10 @@ enum AppStrings {
     static var toolsQuick: String { isCzech ? "Rychlé" : "Quick" }
     static var toolsDetect: String { isCzech ? "Detekce" : "Detect" }
     static var toolsPro: String { isCzech ? "Pro" : "Pro" }
+    static var toolsQuickHint: String { isCzech ? "Kamera, světlo, FPS a přístup." : "Camera, light, FPS, and access." }
+    static var toolsDetectHint: String { isCzech ? "Scanner, OCR, dokumenty a on-device AI." : "Scanner, OCR, documents, and on-device AI." }
+    static var toolsProHint: String { isCzech ? "WB, AF, lock a ruční kontrola obrazu." : "WB, AF, lock, and manual image control." }
+    static var resetPro: String { isCzech ? "Reset" : "Reset" }
     static var swipeTuningHint: String {
         isCzech ? "Tahem vlevo a vpravo upravíš aktivní parametr." : "Swipe left and right to adjust the active parameter."
     }

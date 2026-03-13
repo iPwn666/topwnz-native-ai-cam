@@ -14,6 +14,10 @@ Veřejné repo:
 - ruční `EXP / SHR / ISO / FOC`
 - gesture tuning: `↕` přepínání aktivního parametru + `↔` jemné ladění
 - rychlý reset Pro nastavení přes `2-finger double tap` (návrat na Auto)
+- minimalistický side-panel sheet:
+  - rychlé / detekční / pro sekce
+  - dvousloupcová mřížka ovládacích tiles
+  - přímý `Reset` pro návrat Pro režimu na Auto
 - white balance preset, night boost, `30/60 FPS`
 - grid, level, histogram, zebry, luma monitoring
 - QR/barcode scanner s chytrými akcemi

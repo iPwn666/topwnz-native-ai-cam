@@ -107,6 +107,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let modeControl = UISegmentedControl(items: AnalysisMode.allCases.map(AppStrings.modeLabel))
 
     private let toolsPanelCard = CameraGlassCard()
+    private let toolsTitleLabel = UILabel()
+    private let toolsHintLabel = UILabel()
     private let toolsSectionStack = UIStackView()
     private let toolsScrollView = UIScrollView()
     private let toolsToggleButton = UIButton(type: .system)
@@ -137,6 +139,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private let documentButton = UIButton(type: .system)
     private let mlButton = UIButton(type: .system)
     private let objectButton = UIButton(type: .system)
+    private let resetProButton = UIButton(type: .system)
     private let brandLinkButton = UIButton(type: .system)
     private let askAIButton = UIButton(type: .system)
     private let speakButton = UIButton(type: .system)
@@ -317,13 +320,22 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
         toolsPanelCard.alpha = 0
         toolsPanelCard.isHidden = true
+        toolsTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        toolsTitleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        toolsTitleLabel.textColor = .white
+        toolsTitleLabel.textAlignment = .left
+        toolsHintLabel.translatesAutoresizingMaskIntoConstraints = false
+        toolsHintLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        toolsHintLabel.textColor = UIColor.white.withAlphaComponent(0.66)
+        toolsHintLabel.textAlignment = .left
+        toolsHintLabel.numberOfLines = 2
         toolsSectionStack.translatesAutoresizingMaskIntoConstraints = false
         toolsSectionStack.axis = .horizontal
-        toolsSectionStack.spacing = 8
+        toolsSectionStack.spacing = 6
         toolsSectionStack.distribution = .fillEqually
         toolsScrollView.translatesAutoresizingMaskIntoConstraints = false
         toolsScrollView.showsVerticalScrollIndicator = false
-        toolsScrollView.alwaysBounceVertical = true
+        toolsScrollView.alwaysBounceVertical = false
         toolsScrollView.delaysContentTouches = false
 
         configureToolsToggleButton()
@@ -333,31 +345,32 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
         rightButtonStack.translatesAutoresizingMaskIntoConstraints = false
         rightButtonStack.axis = .vertical
-        rightButtonStack.spacing = 10
+        rightButtonStack.spacing = 8
 
-        configureOverlayButton(flipButton, symbolName: "camera.rotate", action: #selector(flipTapped), label: AppStrings.flipCamera)
-        configureOverlayButton(flashButton, symbolName: "bolt.slash.fill", action: #selector(flashTapped), label: AppStrings.flashOff)
+        configureOverlayButton(flipButton, symbolName: "camera.rotate", action: #selector(flipTapped), label: AppStrings.flipCamera, title: AppStrings.flipCamera)
+        configureOverlayButton(flashButton, symbolName: "bolt.slash.fill", action: #selector(flashTapped), label: AppStrings.flashOff, title: AppStrings.flash)
         configureZoomBadge()
         configureFPSButton()
-        configureOverlayButton(nightButton, symbolName: "moon.fill", action: #selector(nightModeTapped), label: AppStrings.nightModeOff)
-        configureOverlayButton(scannerButton, symbolName: "qrcode.viewfinder", action: #selector(scannerTapped), label: AppStrings.scannerOff)
-        configureOverlayButton(vaultButton, symbolName: "archivebox.fill", action: #selector(vaultTapped), label: AppStrings.scanVault)
-        configureOverlayButton(settingsButton, symbolName: "gearshape.fill", action: #selector(settingsTapped), label: AppStrings.settings)
+        configureOverlayButton(nightButton, symbolName: "moon.fill", action: #selector(nightModeTapped), label: AppStrings.nightModeOff, title: AppStrings.night)
+        configureOverlayButton(scannerButton, symbolName: "qrcode.viewfinder", action: #selector(scannerTapped), label: AppStrings.scannerOff, title: AppStrings.scanner)
+        configureOverlayButton(vaultButton, symbolName: "archivebox.fill", action: #selector(vaultTapped), label: AppStrings.scanVault, title: AppStrings.scanVault)
+        configureOverlayButton(settingsButton, symbolName: "gearshape.fill", action: #selector(settingsTapped), label: AppStrings.settings, title: AppStrings.settings)
         configureTuningButton(exposureTuneButton, title: "EXP", action: #selector(exposureTuneTapped))
         configureTuningButton(shutterTuneButton, title: "SHR", action: #selector(shutterTuneTapped))
         configureTuningButton(isoTuneButton, title: "ISO", action: #selector(isoTuneTapped))
         configureTuningButton(focusTuneButton, title: "FOC", action: #selector(focusTuneTapped))
         configureAutoFocusButton()
-        configureOverlayButton(lockButton, symbolName: "lock.open", action: #selector(lockTapped), label: AppStrings.focusExposureLock)
+        configureOverlayButton(lockButton, symbolName: "lock.open", action: #selector(lockTapped), label: AppStrings.focusExposureLock, title: "AE/AF")
         configureWhiteBalanceButton()
-        configureOverlayButton(gridButton, symbolName: "grid", action: #selector(gridTapped), label: AppStrings.grid)
-        configureOverlayButton(levelButton, symbolName: "level", action: #selector(levelTapped), label: AppStrings.level)
+        configureOverlayButton(gridButton, symbolName: "grid", action: #selector(gridTapped), label: AppStrings.grid, title: AppStrings.grid)
+        configureOverlayButton(levelButton, symbolName: "level", action: #selector(levelTapped), label: AppStrings.level, title: AppStrings.level)
         configureTuningButton(histogramButton, title: "HST", action: #selector(histogramTapped))
         configureTuningButton(zebraButton, title: "ZBR", action: #selector(zebraTapped))
         configureTuningButton(ocrButton, title: "OCR", action: #selector(ocrTapped))
         configureTuningButton(documentButton, title: "DOC", action: #selector(documentTapped))
         configureTuningButton(mlButton, title: "ML", action: #selector(mlTapped))
         configureTuningButton(objectButton, title: "OBJ", action: #selector(objectTapped))
+        configureOverlayButton(resetProButton, symbolName: "arrow.counterclockwise", action: #selector(resetProTapped), label: AppStrings.resetPro, title: AppStrings.resetPro)
         configureBrandLinkButton()
 
         captureButton.translatesAutoresizingMaskIntoConstraints = false
@@ -477,6 +490,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         toolsSectionStack.addArrangedSubview(proSectionButton)
         renderActiveToolsSection()
 
+        toolsPanelCard.contentView.addSubview(toolsTitleLabel)
+        toolsPanelCard.contentView.addSubview(toolsHintLabel)
         toolsPanelCard.contentView.addSubview(toolsSectionStack)
         toolsPanelCard.contentView.addSubview(toolsScrollView)
         toolsScrollView.addSubview(rightButtonStack)
@@ -590,19 +605,27 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
             toolsPanelCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             toolsPanelCard.topAnchor.constraint(equalTo: toolsToggleButton.bottomAnchor, constant: 10),
-            toolsPanelCard.widthAnchor.constraint(equalToConstant: 82),
-            toolsPanelCard.heightAnchor.constraint(equalToConstant: 420),
+            toolsPanelCard.widthAnchor.constraint(equalToConstant: 168),
+            toolsPanelCard.heightAnchor.constraint(equalToConstant: 438),
             toolsPanelCard.bottomAnchor.constraint(lessThanOrEqualTo: captureButton.topAnchor, constant: -16),
 
-            toolsSectionStack.topAnchor.constraint(equalTo: toolsPanelCard.contentView.topAnchor, constant: 8),
-            toolsSectionStack.leadingAnchor.constraint(equalTo: toolsPanelCard.contentView.leadingAnchor, constant: 6),
-            toolsSectionStack.trailingAnchor.constraint(equalTo: toolsPanelCard.contentView.trailingAnchor, constant: -6),
-            toolsSectionStack.heightAnchor.constraint(equalToConstant: 32),
+            toolsTitleLabel.topAnchor.constraint(equalTo: toolsPanelCard.contentView.topAnchor, constant: 12),
+            toolsTitleLabel.leadingAnchor.constraint(equalTo: toolsPanelCard.contentView.leadingAnchor, constant: 12),
+            toolsTitleLabel.trailingAnchor.constraint(equalTo: toolsPanelCard.contentView.trailingAnchor, constant: -12),
+
+            toolsHintLabel.topAnchor.constraint(equalTo: toolsTitleLabel.bottomAnchor, constant: 2),
+            toolsHintLabel.leadingAnchor.constraint(equalTo: toolsPanelCard.contentView.leadingAnchor, constant: 12),
+            toolsHintLabel.trailingAnchor.constraint(equalTo: toolsPanelCard.contentView.trailingAnchor, constant: -12),
+
+            toolsSectionStack.topAnchor.constraint(equalTo: toolsHintLabel.bottomAnchor, constant: 10),
+            toolsSectionStack.leadingAnchor.constraint(equalTo: toolsPanelCard.contentView.leadingAnchor, constant: 10),
+            toolsSectionStack.trailingAnchor.constraint(equalTo: toolsPanelCard.contentView.trailingAnchor, constant: -10),
+            toolsSectionStack.heightAnchor.constraint(equalToConstant: 30),
 
             toolsScrollView.topAnchor.constraint(equalTo: toolsSectionStack.bottomAnchor, constant: 8),
-            toolsScrollView.leadingAnchor.constraint(equalTo: toolsPanelCard.contentView.leadingAnchor, constant: 4),
-            toolsScrollView.trailingAnchor.constraint(equalTo: toolsPanelCard.contentView.trailingAnchor, constant: -4),
-            toolsScrollView.bottomAnchor.constraint(equalTo: toolsPanelCard.contentView.bottomAnchor, constant: -8),
+            toolsScrollView.leadingAnchor.constraint(equalTo: toolsPanelCard.contentView.leadingAnchor, constant: 10),
+            toolsScrollView.trailingAnchor.constraint(equalTo: toolsPanelCard.contentView.trailingAnchor, constant: -10),
+            toolsScrollView.bottomAnchor.constraint(equalTo: toolsPanelCard.contentView.bottomAnchor, constant: -10),
 
             rightButtonStack.topAnchor.constraint(equalTo: toolsScrollView.contentLayoutGuide.topAnchor),
             rightButtonStack.leadingAnchor.constraint(equalTo: toolsScrollView.contentLayoutGuide.leadingAnchor),
@@ -757,6 +780,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         mlButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
         objectButton.isEnabled = canInteractWithCamera
         objectButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
+        resetProButton.isEnabled = canInteractWithCamera
+        resetProButton.alpha = !hasImage && !hasVideo ? 1.0 : 0.45
         vaultButton.isEnabled = !vaultEntries.isEmpty
         vaultButton.alpha = vaultEntries.isEmpty ? 0.45 : 1.0
         shutterTuneButton.isEnabled = canInteractWithCamera
@@ -780,12 +805,14 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         updateDocumentButton()
         updateMLButton()
         updateObjectButton()
+        updateResetProButton()
         updateVaultButton()
         updatePrimaryActionButton()
         updateAnalyzeButton()
         updateSpeakButton()
         updateToolsToggleButton()
         updateToolsSectionButtons()
+        updateToolsHeader()
         updateTuningButtons()
         updateToolsPanel(animated: false)
         updateTuningHUD(text: tuningHUDText(), animated: false)
@@ -953,6 +980,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         objectButton.accessibilityLabel = AppStrings.tuningLabel(AppStrings.objectDetect, active: isObjectDetectionEnabled)
     }
 
+    private func updateResetProButton() {
+        resetProButton.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.18)
+        resetProButton.tintColor = UIColor.systemOrange
+    }
+
     private func updateVaultButton() {
         vaultButton.configuration?.subtitle = vaultEntries.isEmpty ? nil : "\(vaultEntries.count)"
         vaultButton.tintColor = vaultEntries.isEmpty ? .white : UIColor.systemOrange
@@ -968,6 +1000,29 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         updateSectionButton(quickSectionButton, active: activeToolsSection == .quick)
         updateSectionButton(detectSectionButton, active: activeToolsSection == .detect)
         updateSectionButton(proSectionButton, active: activeToolsSection == .pro)
+    }
+
+    private func updateToolsHeader() {
+        toolsTitleLabel.text = {
+            switch activeToolsSection {
+            case .quick:
+                return AppStrings.toolsQuick
+            case .detect:
+                return AppStrings.toolsDetect
+            case .pro:
+                return AppStrings.toolsPro
+            }
+        }()
+        toolsHintLabel.text = {
+            switch activeToolsSection {
+            case .quick:
+                return AppStrings.toolsQuickHint
+            case .detect:
+                return AppStrings.toolsDetectHint
+            case .pro:
+                return AppStrings.toolsProHint
+            }
+        }()
     }
 
     private func updateTuningButtons() {
@@ -1043,6 +1098,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         toolsSectionStack.arrangedSubviews.forEach {
             $0.isUserInteractionEnabled = isInteractive
         }
+        toolsTitleLabel.alpha = isInteractive ? 1 : 0.75
+        toolsHintLabel.alpha = isInteractive ? 1 : 0.72
     }
 
     private func toolButtons(for section: ToolsSection) -> [UIButton] {
@@ -1052,7 +1109,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         case .detect:
             return [scannerButton, ocrButton, documentButton, mlButton, objectButton]
         case .pro:
-            return [whiteBalanceButton, autofocusButton, lockButton, exposureTuneButton, shutterTuneButton, isoTuneButton, focusTuneButton, gridButton, levelButton, histogramButton, zebraButton]
+            return [whiteBalanceButton, autofocusButton, lockButton, resetProButton, exposureTuneButton, shutterTuneButton, isoTuneButton, focusTuneButton, gridButton, levelButton, histogramButton, zebraButton]
         }
     }
 
@@ -1062,10 +1119,35 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
             row.removeFromSuperview()
         }
 
-        toolButtons(for: activeToolsSection).forEach { button in
-            button.removeFromSuperview()
-            rightButtonStack.addArrangedSubview(button)
+        let buttons = toolButtons(for: activeToolsSection)
+        var index = 0
+
+        while index < buttons.count {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.alignment = .fill
+            row.distribution = .fillEqually
+            row.spacing = 8
+
+            let left = buttons[index]
+            left.removeFromSuperview()
+            row.addArrangedSubview(left)
+
+            if index + 1 < buttons.count {
+                let right = buttons[index + 1]
+                right.removeFromSuperview()
+                row.addArrangedSubview(right)
+            } else {
+                let spacer = UIView()
+                spacer.isUserInteractionEnabled = false
+                row.addArrangedSubview(spacer)
+            }
+
+            rightButtonStack.addArrangedSubview(row)
+            index += 2
         }
+
+        updateToolsHeader()
         updateToolsSectionButtons()
     }
 
@@ -1403,6 +1485,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     @objc
     private func focusTuneTapped() {
         selectActiveTuningControl(.focus, showHUD: true)
+    }
+
+    @objc
+    private func resetProTapped() {
+        resetProTuningToAuto()
     }
 
     @objc
@@ -2905,6 +2992,20 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 #endif
     }
 
+    private func applyToolTileStyle(_ button: UIButton, height: CGFloat = 62) {
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.24)
+        button.layer.cornerRadius = 18
+        button.layer.cornerCurve = .continuous
+        button.clipsToBounds = true
+        button.titleLabel?.font = .systemFont(ofSize: 10, weight: .semibold)
+        button.titleLabel?.numberOfLines = 2
+        button.titleLabel?.textAlignment = .center
+
+        NSLayoutConstraint.activate([
+            button.heightAnchor.constraint(equalToConstant: height),
+        ])
+    }
+
     private func configureToolsToggleButton() {
         toolsToggleButton.translatesAutoresizingMaskIntoConstraints = false
         var configuration = UIButton.Configuration.plain()
@@ -2929,20 +3030,21 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     private func configureSectionButton(_ button: UIButton, symbolName: String, action: Selector, label: String) {
         button.translatesAutoresizingMaskIntoConstraints = false
         var configuration = UIButton.Configuration.plain()
-        configuration.image = UIImage(systemName: symbolName)
+        configuration.title = label
         configuration.baseForegroundColor = .white
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 7, bottom: 7, trailing: 7)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8)
         button.configuration = configuration
         button.backgroundColor = UIColor.black.withAlphaComponent(0.24)
-        button.layer.cornerRadius = 14
+        button.layer.cornerRadius = 15
         button.layer.cornerCurve = .continuous
         button.clipsToBounds = true
         button.addTarget(self, action: action, for: .touchUpInside)
         button.accessibilityLabel = label
         installPressAnimation(on: button, pressedScale: 0.95)
+        button.titleLabel?.font = .systemFont(ofSize: 10, weight: .semibold)
 
         NSLayoutConstraint.activate([
-            button.heightAnchor.constraint(equalToConstant: 32),
+            button.heightAnchor.constraint(equalToConstant: 30),
         ])
     }
 
@@ -2957,18 +3059,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         configuration.title = "WB"
         configuration.subtitle = AppStrings.whiteBalanceLabel(settings.whiteBalancePreset)
         configuration.baseForegroundColor = .white
+        configuration.titleAlignment = .center
         whiteBalanceButton.configuration = configuration
-        whiteBalanceButton.backgroundColor = UIColor.black.withAlphaComponent(0.28)
-        whiteBalanceButton.layer.cornerRadius = 26
-        whiteBalanceButton.layer.cornerCurve = .continuous
-        whiteBalanceButton.clipsToBounds = true
         whiteBalanceButton.addTarget(self, action: #selector(whiteBalanceTapped), for: .touchUpInside)
         installPressAnimation(on: whiteBalanceButton)
-
-        NSLayoutConstraint.activate([
-            whiteBalanceButton.widthAnchor.constraint(equalToConstant: 52),
-            whiteBalanceButton.heightAnchor.constraint(equalToConstant: 52),
-        ])
+        applyToolTileStyle(whiteBalanceButton)
     }
 
     private func configureAutoFocusButton() {
@@ -2977,76 +3072,52 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         configuration.title = "AF"
         configuration.subtitle = AppStrings.focusModeLabel(settings.focusMode)
         configuration.baseForegroundColor = .white
+        configuration.titleAlignment = .center
         autofocusButton.configuration = configuration
-        autofocusButton.backgroundColor = UIColor.black.withAlphaComponent(0.28)
-        autofocusButton.layer.cornerRadius = 26
-        autofocusButton.layer.cornerCurve = .continuous
-        autofocusButton.clipsToBounds = true
         autofocusButton.addTarget(self, action: #selector(autofocusTapped), for: .touchUpInside)
         installPressAnimation(on: autofocusButton)
-
-        NSLayoutConstraint.activate([
-            autofocusButton.widthAnchor.constraint(equalToConstant: 52),
-            autofocusButton.heightAnchor.constraint(equalToConstant: 52),
-        ])
+        applyToolTileStyle(autofocusButton)
     }
 
-    private func configureOverlayButton(_ button: UIButton, symbolName: String, action: Selector, label: String) {
+    private func configureOverlayButton(_ button: UIButton, symbolName: String, action: Selector, label: String, title: String) {
         button.translatesAutoresizingMaskIntoConstraints = false
         var configuration = UIButton.Configuration.plain()
         configuration.image = UIImage(systemName: symbolName)
+        configuration.title = title
+        configuration.imagePlacement = .top
+        configuration.imagePadding = 4
+        configuration.titleAlignment = .center
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
         configuration.baseForegroundColor = .white
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
         button.configuration = configuration
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.28)
-        button.layer.cornerRadius = 26
-        button.layer.cornerCurve = .continuous
-        button.clipsToBounds = true
         button.addTarget(self, action: action, for: .touchUpInside)
         button.accessibilityLabel = label
         installPressAnimation(on: button)
-
-        NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 52),
-            button.heightAnchor.constraint(equalToConstant: 52),
-        ])
+        applyToolTileStyle(button)
     }
 
     private func configureTuningButton(_ button: UIButton, title: String, action: Selector) {
         button.translatesAutoresizingMaskIntoConstraints = false
         var configuration = UIButton.Configuration.plain()
         configuration.title = title
+        configuration.titleAlignment = .center
         configuration.baseForegroundColor = .white
         button.configuration = configuration
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.28)
-        button.layer.cornerRadius = 26
-        button.layer.cornerCurve = .continuous
-        button.clipsToBounds = true
         button.addTarget(self, action: action, for: .touchUpInside)
         installPressAnimation(on: button)
-
-        NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 52),
-            button.heightAnchor.constraint(equalToConstant: 52),
-        ])
+        applyToolTileStyle(button)
     }
 
     private func configureZoomBadge() {
         zoomBadgeButton.translatesAutoresizingMaskIntoConstraints = false
         var configuration = UIButton.Configuration.plain()
         configuration.title = "1.0x"
+        configuration.subtitle = AppStrings.zoom
+        configuration.titleAlignment = .center
         configuration.baseForegroundColor = .white
         zoomBadgeButton.configuration = configuration
-        zoomBadgeButton.backgroundColor = UIColor.black.withAlphaComponent(0.28)
-        zoomBadgeButton.layer.cornerRadius = 26
-        zoomBadgeButton.layer.cornerCurve = .continuous
-        zoomBadgeButton.clipsToBounds = true
         zoomBadgeButton.isUserInteractionEnabled = false
-
-        NSLayoutConstraint.activate([
-            zoomBadgeButton.widthAnchor.constraint(equalToConstant: 52),
-            zoomBadgeButton.heightAnchor.constraint(equalToConstant: 52),
-        ])
+        applyToolTileStyle(zoomBadgeButton)
     }
 
     private func configureFPSButton() {
@@ -3054,18 +3125,11 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         var configuration = UIButton.Configuration.plain()
         configuration.title = "30"
         configuration.subtitle = AppStrings.fps
+        configuration.titleAlignment = .center
         configuration.baseForegroundColor = .white
         fpsButton.configuration = configuration
-        fpsButton.backgroundColor = UIColor.black.withAlphaComponent(0.28)
-        fpsButton.layer.cornerRadius = 26
-        fpsButton.layer.cornerCurve = .continuous
-        fpsButton.clipsToBounds = true
         fpsButton.addTarget(self, action: #selector(fpsTapped), for: .touchUpInside)
-
-        NSLayoutConstraint.activate([
-            fpsButton.widthAnchor.constraint(equalToConstant: 52),
-            fpsButton.heightAnchor.constraint(equalToConstant: 52),
-        ])
+        applyToolTileStyle(fpsButton)
     }
 
     private func configureBrandLinkButton() {
